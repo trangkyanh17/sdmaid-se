@@ -17,7 +17,7 @@ class AppPermissionInspector @Inject constructor(
         ) ?: return null
 
         val names = pkgInfo.requestedPermissions.orEmpty()
-        val flags = pkgInfo.requestedPermissionsFlags.orEmpty()
+        val flags = pkgInfo.requestedPermissionsFlags ?: IntArray(0)
 
         val permissions = names
             .mapIndexed { index, name ->
