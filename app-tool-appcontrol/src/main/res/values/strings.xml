@@ -11,6 +11,10 @@
     <string name="appcontrol_systemsettings_open_description">Open your device\'s system settings for this app.</string>
     <string name="appcontrol_access_title">Permissions &amp; access</string>
     <string name="appcontrol_access_description">Inspect the permissions requested by this app and their current grant state.</string>
+    <string name="appcontrol_access_summary">%1$d requested · %2$d granted</string>
+    <string name="appcontrol_access_granted">Granted</string>
+    <string name="appcontrol_access_denied">Denied</string>
+    <string name="appcontrol_access_empty">No requested permissions.</string>
     <string name="appcontrol_app_launch_title">Launch app</string>
     <string name="appcontrol_app_launch_description">Launch this app\'s primary activity.</string>
     <string name="appcontrol_app_forcestop_title">Force stop</string>

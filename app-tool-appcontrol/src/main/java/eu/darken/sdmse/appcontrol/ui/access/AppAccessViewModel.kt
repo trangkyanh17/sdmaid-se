@@ -23,6 +23,13 @@ class AppAccessViewModel @Inject constructor(
     fun bindRoute(route: AppAccessRoute) {
         if (boundRoute != null) return
         boundRoute = route
+
+        launch {
+            statePub.value = State.Loading
+            statePub.value = inspector.inspect(route.installId)
+                ?.let(State::Ready)
+                ?: State.NotFound
+        }
     }
 
     sealed interface State {

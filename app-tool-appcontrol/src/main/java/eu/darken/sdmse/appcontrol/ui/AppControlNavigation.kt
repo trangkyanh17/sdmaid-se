@@ -2,6 +2,7 @@ package eu.darken.sdmse.appcontrol.ui
 
 import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.NavKey
+import eu.darken.sdmse.appcontrol.ui.access.AppAccessScreenHost
 import eu.darken.sdmse.appcontrol.ui.list.AppControlListScreenHost
 import eu.darken.sdmse.appcontrol.ui.list.actions.AppActionSheetHost
 import eu.darken.sdmse.appcontrol.ui.settings.AppControlSettingsScreenHost
@@ -15,6 +16,7 @@ class AppControlNavigation @Inject constructor() : NavigationEntry {
     override fun EntryProviderScope<NavKey>.setup() {
         entry<AppControlSettingsRoute> { AppControlSettingsScreenHost() }
         entry<AppControlListRoute> { AppControlListScreenHost() }
+        entry<AppAccessRoute> { route -> AppAccessScreenHost(route = route) }
         entry<AppActionRoute>(metadata = modalBottomSheetMetadata()) { route ->
             AppActionSheetHost(installId = route.installId)
         }
