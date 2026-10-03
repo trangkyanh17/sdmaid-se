@@ -163,6 +163,7 @@ class AppActionViewModel @Inject constructor(
             is AppActionItem.Info.Usage -> openUsageScreen()
             is AppActionItem.Action.Launch -> launchApp()
             is AppActionItem.Action.SystemSettings -> openSystemSettings()
+            is AppActionItem.Action.Access -> Unit
             is AppActionItem.Action.AppStore -> openAppStore()
             is AppActionItem.Action.ForceStop -> submitForceStop()
             is AppActionItem.Action.Toggle -> submitToggle()

@@ -12,9 +12,11 @@ import eu.darken.sdmse.appcontrol.core.restore.RestoreTask
 import eu.darken.sdmse.appcontrol.core.restore.RestoreUnavailableException
 import eu.darken.sdmse.appcontrol.core.toggle.AppControlToggleTask
 import eu.darken.sdmse.appcontrol.core.uninstall.UninstallTask
+import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.appcontrol.ui.list.actions.items.AppActionItem
 import eu.darken.sdmse.common.ca.CaString
 import eu.darken.sdmse.common.ca.toCaString
+import eu.darken.sdmse.common.navigation.NavEvent
 import eu.darken.sdmse.common.pkgs.Pkg
 import eu.darken.sdmse.common.pkgs.features.InstallDetails
 import eu.darken.sdmse.common.pkgs.features.InstallId
@@ -307,6 +309,28 @@ class AppActionViewModelTest : BaseTest() {
         val event = h.vm.events.first()
         event.shouldBeInstanceOf<AppActionViewModel.Event.ConfirmRestore>()
         event.installId shouldBe installId
+    }
+
+    @Test
+    fun `onActionTapped Access navigates to exact install id`() = runTest2 {
+        val app = appInfo("com.a.app")
+        val installId = app.installId
+        val h = harness(apps = listOf(app))
+        h.vm.setInstallId(installId)
+        advanceUntilIdle()
+
+        val navEvents = mutableListOf<NavEvent>()
+        val navJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            h.vm.navEvents.collect { navEvents.add(it) }
+        }
+
+        h.vm.onActionTapped(AppActionItem.Action.Access(installId))
+        advanceUntilIdle()
+
+        navEvents.size shouldBe 1
+        val event = navEvents.single().shouldBeInstanceOf<NavEvent.GoTo>()
+        event.destination shouldBe AppAccessRoute(installId)
+        navJob.cancel()
     }
 
     // ─────────────────────────── task submission ───────────────────────────

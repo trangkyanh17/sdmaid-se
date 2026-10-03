@@ -323,6 +323,8 @@ private fun ActionItemRow(
             onClick = { onActionTapped(item) },
         )
 
+        is AppActionItem.Action.Access -> Unit
+
         is AppActionItem.Action.AppStore -> AppActionRow(
             icon = rememberVectorPainter(Icons.TwoTone.Shop),
             title = stringResource(R.string.appcontrol_appstore_open_title),
@@ -430,6 +432,7 @@ private fun itemKey(item: AppActionItem): String = when (item) {
     is AppActionItem.Action.Launch -> "launch"
     is AppActionItem.Action.ForceStop -> "forceStop"
     is AppActionItem.Action.SystemSettings -> "settings"
+    is AppActionItem.Action.Access -> "access"
     is AppActionItem.Action.AppStore -> "appstore"
     is AppActionItem.Action.Exclude -> "exclude"
     is AppActionItem.Action.Toggle -> "toggle"

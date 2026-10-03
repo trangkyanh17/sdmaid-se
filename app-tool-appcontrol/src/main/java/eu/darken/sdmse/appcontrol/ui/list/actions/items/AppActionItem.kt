@@ -21,6 +21,7 @@ sealed interface AppActionItem {
         data class Launch(override val installId: InstallId) : Action
         data class ForceStop(override val installId: InstallId) : Action
         data class SystemSettings(override val installId: InstallId) : Action
+        data class Access(override val installId: InstallId) : Action
         data class AppStore(override val installId: InstallId) : Action
         data class Exclude(
             override val installId: InstallId,

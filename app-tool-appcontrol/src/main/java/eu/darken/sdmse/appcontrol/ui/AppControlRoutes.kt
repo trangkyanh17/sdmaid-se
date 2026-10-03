@@ -11,3 +11,8 @@ data object AppControlSettingsRoute : NavigationDestination
 data class AppActionRoute(
     val installId: InstallId,
 ) : NavigationDestination
+
+@Serializable
+data class AppAccessRoute(
+    val installId: InstallId,
+) : NavigationDestination
