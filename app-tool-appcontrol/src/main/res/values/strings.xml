@@ -9,6 +9,8 @@
     <string name="appcontrol_appstore_open_title">Open in app store</string>
     <string name="appcontrol_appstore_open_description">Open this app in the app store it was installed from.</string>
     <string name="appcontrol_systemsettings_open_description">Open your device\'s system settings for this app.</string>
+    <string name="appcontrol_access_title">Permissions &amp; access</string>
+    <string name="appcontrol_access_description">Inspect the permissions requested by this app and their current grant state.</string>
     <string name="appcontrol_app_launch_title">Launch app</string>
     <string name="appcontrol_app_launch_description">Launch this app\'s primary activity.</string>
     <string name="appcontrol_app_forcestop_title">Force stop</string>

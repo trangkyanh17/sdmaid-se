@@ -22,6 +22,7 @@ import androidx.compose.material.icons.twotone.AcUnit
 import androidx.compose.material.icons.twotone.Archive
 import androidx.compose.material.icons.twotone.Settings
 import androidx.compose.material.icons.twotone.SaveAlt
+import androidx.compose.material.icons.twotone.Security
 import androidx.compose.material.icons.twotone.Shop
 import androidx.compose.material.icons.twotone.Unarchive
 import androidx.compose.material3.MaterialTheme
@@ -323,7 +324,12 @@ private fun ActionItemRow(
             onClick = { onActionTapped(item) },
         )
 
-        is AppActionItem.Action.Access -> Unit
+        is AppActionItem.Action.Access -> AppActionRow(
+            icon = rememberVectorPainter(Icons.TwoTone.Security),
+            title = stringResource(R.string.appcontrol_access_title),
+            description = stringResource(R.string.appcontrol_access_description),
+            onClick = { onActionTapped(item) },
+        )
 
         is AppActionItem.Action.AppStore -> AppActionRow(
             icon = rememberVectorPainter(Icons.TwoTone.Shop),

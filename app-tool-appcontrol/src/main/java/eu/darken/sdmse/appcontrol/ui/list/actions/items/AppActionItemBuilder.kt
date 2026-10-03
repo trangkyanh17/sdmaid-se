@@ -68,6 +68,7 @@ fun buildAppActionItems(
     if (ctx.isCurrentUser) {
         add(AppActionItem.Action.SystemSettings(appInfo.installId))
     }
+    add(AppActionItem.Action.Access(appInfo.installId))
     if (ctx.isCurrentUser && ctx.appStoreAvailable) {
         add(AppActionItem.Action.AppStore(appInfo.installId))
     }

@@ -23,6 +23,7 @@ import eu.darken.sdmse.appcontrol.core.restore.RestoreUnavailableException
 import eu.darken.sdmse.appcontrol.core.toggle.AppControlToggleTask
 import eu.darken.sdmse.appcontrol.core.uninstall.UninstallException
 import eu.darken.sdmse.appcontrol.core.uninstall.UninstallTask
+import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.appcontrol.ui.list.actions.items.AppActionItem
 import eu.darken.sdmse.appcontrol.ui.list.actions.items.AppActionItemContext
 import eu.darken.sdmse.appcontrol.ui.list.actions.items.buildAppActionItems
@@ -163,7 +164,7 @@ class AppActionViewModel @Inject constructor(
             is AppActionItem.Info.Usage -> openUsageScreen()
             is AppActionItem.Action.Launch -> launchApp()
             is AppActionItem.Action.SystemSettings -> openSystemSettings()
-            is AppActionItem.Action.Access -> Unit
+            is AppActionItem.Action.Access -> navTo(AppAccessRoute(id))
             is AppActionItem.Action.AppStore -> openAppStore()
             is AppActionItem.Action.ForceStop -> submitForceStop()
             is AppActionItem.Action.Toggle -> submitToggle()
