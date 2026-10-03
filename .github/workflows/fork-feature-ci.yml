@@ -1,0 +1,49 @@
+name: Fork Feature CI
+
+on:
+  push:
+    branches:
+      - dev
+      - 'feat/**'
+      - 'fix/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-feature-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tool-tests:
+    name: Tool module tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup project and build environment
+        uses: ./.github/actions/common-setup
+
+      - name: Run tool module tests
+        run: ./gradlew testToolModules
+
+  debug-builds:
+    name: Debug builds
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup project and build environment
+        uses: ./.github/actions/common-setup
+
+      - name: Build FOSS and GPlay debug
+        run: ./gradlew app:assembleFossDebug app:assembleGplayDebug
