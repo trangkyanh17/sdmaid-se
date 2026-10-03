@@ -10,20 +10,24 @@ class AppPermissionInspector @Inject constructor(
     private val pkgOps: PkgOps,
 ) {
     suspend fun inspect(installId: InstallId): AppPermissionSnapshot? {
-        val packageInfo = pkgOps.queryPkg(
+        val pkgInfo = pkgOps.queryPkg(
             id = installId.pkgId,
             flags = PackageManager.GET_PERMISSIONS.toLong(),
             userHandle = installId.userHandle,
         ) ?: return null
 
-        val grantFlags = packageInfo.requestedPermissionsFlags
-        val permissions = packageInfo.requestedPermissions
-            .orEmpty()
+        val names = pkgInfo.requestedPermissions.orEmpty()
+        val flags = pkgInfo.requestedPermissionsFlags.orEmpty()
+
+        val permissions = names
             .mapIndexed { index, name ->
-                val flags = grantFlags?.getOrNull(index) ?: 0
+                val granted = flags
+                    .getOrNull(index)
+                    ?.let { it and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0 }
+                    ?: false
                 AppPermissionSnapshot.Entry(
                     name = name,
-                    granted = flags and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0,
+                    granted = granted,
                 )
             }
             .sortedBy { it.name }
