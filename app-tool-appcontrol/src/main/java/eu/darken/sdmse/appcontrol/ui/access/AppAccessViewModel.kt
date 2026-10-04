@@ -42,11 +42,73 @@ class AppAccessViewModel @Inject constructor(
         }
     }
 
-    fun requestPermissionMutation(permissionId: String) = Unit
+    fun requestPermissionMutation(permissionId: String) {
+        val ready = statePub.value as? State.Ready ?: return
+        if (ready.mutatingPermissionId != null) return
 
-    fun dismissPermissionMutation() = Unit
+        val permission = ready.snapshot.permissions.singleOrNull { it.name == permissionId } ?: return
+        if (!permission.runtimeMutable) return
 
-    fun confirmPermissionMutation() = Unit
+        val action = if (permission.granted) {
+            PermissionAction.REVOKE
+        } else {
+            PermissionAction.GRANT
+        }
+        statePub.value = ready.copy(
+            pendingMutation = PermissionMutation(
+                permissionId = permissionId,
+                action = action,
+            ),
+        )
+    }
+
+    fun dismissPermissionMutation() {
+        val ready = statePub.value as? State.Ready ?: return
+        if (ready.mutatingPermissionId != null) return
+        statePub.value = ready.copy(pendingMutation = null)
+    }
+
+    fun confirmPermissionMutation() {
+        val ready = statePub.value as? State.Ready ?: return
+        val mutation = ready.pendingMutation ?: return
+        if (ready.mutatingPermissionId != null) return
+
+        val installId = ready.snapshot.installId
+        statePub.value = ready.copy(
+            pendingMutation = null,
+            mutatingPermissionId = mutation.permissionId,
+        )
+
+        launch {
+            try {
+                val changed = when (mutation.action) {
+                    PermissionAction.GRANT -> controller.grantRuntimePermission(
+                        installId,
+                        mutation.permissionId,
+                    )
+
+                    PermissionAction.REVOKE -> controller.revokeRuntimePermission(
+                        installId,
+                        mutation.permissionId,
+                    )
+                }
+                if (!changed) {
+                    throw IllegalStateException(
+                        "Permission mutation rejected for ${mutation.permissionId}"
+                    )
+                }
+
+                statePub.value = inspector.inspect(installId)
+                    ?.let(State::Ready)
+                    ?: State.NotFound
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                statePub.value = State.Ready(snapshot = ready.snapshot)
+                errorEvents.emit(e)
+            }
+        }
+    }
 
     data class PermissionMutation(
         val permissionId: String,

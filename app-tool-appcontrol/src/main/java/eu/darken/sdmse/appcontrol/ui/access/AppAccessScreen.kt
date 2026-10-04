@@ -4,9 +4,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -14,6 +17,7 @@ import androidx.compose.material.icons.automirrored.twotone.ArrowBack
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,6 +31,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.darken.sdmse.appcontrol.R
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
+import eu.darken.sdmse.common.compose.dialog.SdmConfirmDialog
+import eu.darken.sdmse.common.compose.dialog.SdmDialogAction
 import eu.darken.sdmse.common.compose.layout.SdmScaffold
 import eu.darken.sdmse.common.compose.layout.SdmTooltipIconButton
 import eu.darken.sdmse.common.compose.progress.ProgressOverlay
@@ -34,6 +40,7 @@ import eu.darken.sdmse.common.error.ErrorEventHandler
 import eu.darken.sdmse.common.navigation.NavigationEventHandler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import eu.darken.sdmse.common.R as CommonR
 
 @Composable
 fun AppAccessScreenHost(
@@ -48,6 +55,9 @@ fun AppAccessScreenHost(
     AppAccessScreen(
         stateSource = vm.state,
         onNavigateUp = vm::navUp,
+        onPermissionMutationRequested = vm::requestPermissionMutation,
+        onPermissionMutationDismissed = vm::dismissPermissionMutation,
+        onPermissionMutationConfirmed = vm::confirmPermissionMutation,
     )
 }
 
@@ -56,6 +66,9 @@ internal fun AppAccessScreen(
     stateSource: StateFlow<AppAccessViewModel.State> =
         MutableStateFlow(AppAccessViewModel.State.Loading),
     onNavigateUp: () -> Unit = {},
+    onPermissionMutationRequested: (String) -> Unit = {},
+    onPermissionMutationDismissed: () -> Unit = {},
+    onPermissionMutationConfirmed: () -> Unit = {},
 ) {
     val state by stateSource.collectAsStateWithLifecycle()
 
@@ -114,8 +127,19 @@ internal fun AppAccessScreen(
             is AppAccessViewModel.State.Ready -> PermissionList(
                 snapshot = current.snapshot,
                 contentPadding = paddingValues,
+                mutatingPermissionId = current.mutatingPermissionId,
+                onPermissionMutationRequested = onPermissionMutationRequested,
             )
         }
+    }
+
+    val readyState = state as? AppAccessViewModel.State.Ready
+    readyState?.pendingMutation?.let { mutation ->
+        PermissionMutationDialog(
+            mutation = mutation,
+            onDismiss = onPermissionMutationDismissed,
+            onConfirm = onPermissionMutationConfirmed,
+        )
     }
 }
 
@@ -123,6 +147,8 @@ internal fun AppAccessScreen(
 private fun PermissionList(
     snapshot: AppPermissionSnapshot,
     contentPadding: PaddingValues,
+    mutatingPermissionId: String?,
+    onPermissionMutationRequested: (String) -> Unit,
 ) {
     val grantedCount = snapshot.permissions.count { it.granted }
 
@@ -176,7 +202,11 @@ private fun PermissionList(
             }
         } else {
             items(snapshot.permissions, key = { it.name }) { permission ->
-                PermissionRow(permission)
+                PermissionRow(
+                    permission = permission,
+                    mutatingPermissionId = mutatingPermissionId,
+                    onPermissionMutationRequested = onPermissionMutationRequested,
+                )
                 HorizontalDivider()
             }
         }
@@ -184,27 +214,106 @@ private fun PermissionList(
 }
 
 @Composable
-private fun PermissionRow(permission: AppPermissionSnapshot.Entry) {
-    Column(
+private fun PermissionRow(
+    permission: AppPermissionSnapshot.Entry,
+    mutatingPermissionId: String?,
+    onPermissionMutationRequested: (String) -> Unit,
+) {
+    val mutationInProgress = mutatingPermissionId != null
+    val isThisPermissionMutating = mutatingPermissionId == permission.name
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = permission.name,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = stringResource(
-                if (permission.granted) {
-                    R.string.appcontrol_access_granted
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = permission.name,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(
+                    if (permission.granted) {
+                        R.string.appcontrol_access_granted
+                    } else {
+                        R.string.appcontrol_access_denied
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+
+        if (permission.runtimeMutable) {
+            TextButton(
+                enabled = !mutationInProgress,
+                onClick = { onPermissionMutationRequested(permission.name) },
+            ) {
+                Text(
+                    text = stringResource(
+                        when {
+                            isThisPermissionMutating -> R.string.appcontrol_access_updating
+                            permission.granted -> R.string.appcontrol_access_revoke
+                            else -> R.string.appcontrol_access_grant
+                        },
+                    ),
+                )
+            }
+        } else {
+            Text(
+                text = stringResource(R.string.appcontrol_access_read_only),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PermissionMutationDialog(
+    mutation: AppAccessViewModel.PermissionMutation,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val isRevoke = mutation.action == AppAccessViewModel.PermissionAction.REVOKE
+    SdmConfirmDialog(
+        title = stringResource(
+            if (isRevoke) {
+                R.string.appcontrol_access_revoke_title
+            } else {
+                R.string.appcontrol_access_grant_title
+            },
+        ),
+        message = stringResource(
+            if (isRevoke) {
+                R.string.appcontrol_access_revoke_message
+            } else {
+                R.string.appcontrol_access_grant_message
+            },
+            mutation.permissionId,
+        ),
+        onDismissRequest = onDismiss,
+        positive = SdmDialogAction(
+            label = stringResource(
+                if (isRevoke) {
+                    R.string.appcontrol_access_revoke
                 } else {
-                    R.string.appcontrol_access_denied
+                    R.string.appcontrol_access_grant
                 },
             ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+            onClick = onConfirm,
+        ),
+        negative = SdmDialogAction(
+            label = stringResource(CommonR.string.general_cancel_action),
+            initialFocus = true,
+            onClick = onDismiss,
+        ),
+    )
 }

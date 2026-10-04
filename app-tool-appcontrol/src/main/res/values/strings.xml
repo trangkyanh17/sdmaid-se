@@ -16,6 +16,14 @@
     <string name="appcontrol_access_denied">Denied</string>
     <string name="appcontrol_access_empty">No requested permissions.</string>
     <string name="appcontrol_access_error">Couldn\'t load app permissions.</string>
+    <string name="appcontrol_access_grant">Grant</string>
+    <string name="appcontrol_access_revoke">Revoke</string>
+    <string name="appcontrol_access_updating">Updating…</string>
+    <string name="appcontrol_access_read_only">Read only</string>
+    <string name="appcontrol_access_grant_title">Grant permission?</string>
+    <string name="appcontrol_access_grant_message">Grant %1$s to this app?</string>
+    <string name="appcontrol_access_revoke_title">Revoke permission?</string>
+    <string name="appcontrol_access_revoke_message">Revoke %1$s from this app? Android may stop the app process and the app may lose access immediately.</string>
     <string name="appcontrol_app_launch_title">Launch app</string>
     <string name="appcontrol_app_launch_description">Launch this app\'s primary activity.</string>
     <string name="appcontrol_app_forcestop_title">Force stop</string>

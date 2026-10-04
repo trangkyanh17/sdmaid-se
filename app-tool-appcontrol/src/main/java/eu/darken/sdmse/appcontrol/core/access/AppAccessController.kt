@@ -11,10 +11,28 @@ class AppAccessController @Inject constructor(
     suspend fun grantRuntimePermission(
         installId: InstallId,
         permissionId: String,
-    ): Boolean = false
+    ): Boolean {
+        val permission = findMutablePermission(installId, permissionId) ?: return false
+        if (permission.granted) return false
+        return pkgOps.grantPermission(installId, permissionId)
+    }
 
     suspend fun revokeRuntimePermission(
         installId: InstallId,
         permissionId: String,
-    ): Boolean = false
+    ): Boolean {
+        val permission = findMutablePermission(installId, permissionId) ?: return false
+        if (!permission.granted) return false
+        return pkgOps.revokePermission(installId, permissionId)
+    }
+
+    private suspend fun findMutablePermission(
+        installId: InstallId,
+        permissionId: String,
+    ): AppPermissionSnapshot.Entry? {
+        val snapshot = inspector.inspect(installId) ?: return null
+        return snapshot.permissions
+            .singleOrNull { it.name == permissionId }
+            ?.takeIf { it.runtimeMutable }
+    }
 }
