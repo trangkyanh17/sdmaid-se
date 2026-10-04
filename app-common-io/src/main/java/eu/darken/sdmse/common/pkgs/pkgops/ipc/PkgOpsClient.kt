@@ -96,12 +96,24 @@ class PkgOpsClient @AssistedInject constructor(
     fun grantPermission(id: InstallId, permission: Permission): Boolean =
         grantPermission(id, permission.permissionId)
 
-    fun grantPermission(id: InstallId, permissionId: String): Boolean = false
+    fun grantPermission(id: InstallId, permissionId: String): Boolean = try {
+        connection.grantPermission(id.pkgId.name, id.userHandle.handleId, permissionId)
+    } catch (e: Exception) {
+        throw e.refineException().also {
+            log(TAG, ERROR) { "grantPermission(id=$id, permissionId=$permissionId) failed: ${it.asLog()}" }
+        }
+    }
 
     fun revokePermission(id: InstallId, permission: Permission): Boolean =
         revokePermission(id, permission.permissionId)
 
-    fun revokePermission(id: InstallId, permissionId: String): Boolean = false
+    fun revokePermission(id: InstallId, permissionId: String): Boolean = try {
+        connection.revokePermission(id.pkgId.name, id.userHandle.handleId, permissionId)
+    } catch (e: Exception) {
+        throw e.refineException().also {
+            log(TAG, ERROR) { "revokePermission(id=$id, permissionId=$permissionId) failed: ${it.asLog()}" }
+        }
+    }
 
     fun setAppOps(id: InstallId, key: String, value: String): Boolean = try {
         connection.setAppOps(id.pkgId.name, id.userHandle.handleId, key, value)

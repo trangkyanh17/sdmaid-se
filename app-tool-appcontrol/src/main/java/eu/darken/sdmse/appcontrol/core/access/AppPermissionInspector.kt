@@ -3,6 +3,7 @@ package eu.darken.sdmse.appcontrol.core.access
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.content.pm.PermissionInfo
 import dagger.hilt.android.qualifiers.ApplicationContext
 import eu.darken.sdmse.common.pkgs.features.InstallId
 import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
@@ -31,6 +32,7 @@ class AppPermissionInspector @Inject constructor(
                 AppPermissionSnapshot.Entry(
                     name = name,
                     granted = granted,
+                    runtimeMutable = isRuntimeMutable(name),
                 )
             }
             .sortedBy { it.name }
@@ -39,5 +41,19 @@ class AppPermissionInspector @Inject constructor(
             installId = installId,
             permissions = permissions,
         )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isRuntimeMutable(permissionId: String): Boolean {
+        val info = try {
+            context.packageManager.getPermissionInfo(permissionId, 0)
+        } catch (_: PackageManager.NameNotFoundException) {
+            return false
+        } catch (_: SecurityException) {
+            return false
+        }
+
+        val baseProtection = info.protectionLevel and PermissionInfo.PROTECTION_MASK_BASE
+        return baseProtection == PermissionInfo.PROTECTION_DANGEROUS
     }
 }

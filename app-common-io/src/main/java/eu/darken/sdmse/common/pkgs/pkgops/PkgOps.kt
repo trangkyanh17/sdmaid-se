@@ -344,20 +344,24 @@ class PkgOps @Inject constructor(
         }
     }
 
-    suspend fun grantPermission(id: InstallId, permission: Permission, mode: Mode = Mode.AUTO): Boolean {
+    suspend fun grantPermission(id: InstallId, permission: Permission, mode: Mode = Mode.AUTO): Boolean =
+        grantPermission(id, permission.permissionId, mode)
+
+    suspend fun grantPermission(id: InstallId, permissionId: String, mode: Mode = Mode.AUTO): Boolean {
         try {
-            log(TAG) { "grantPermission($id, $permission, $mode)" }
-            if (mode == Mode.NORMAL) throw PkgOpsException("grantPermission($id, $permission) does not support mode=NORMAL")
+            log(TAG) { "grantPermission($id, $permissionId, $mode)" }
+            if (mode == Mode.NORMAL) {
+                throw PkgOpsException("grantPermission($id, $permissionId) does not support mode=NORMAL")
+            }
 
             if (adbManager.canUseAdbNow() && (mode == Mode.AUTO || mode == Mode.ADB)) {
-                log(TAG) { "grantPermission($id, $permission, $mode->ADB)" }
-                return adbOps { it.grantPermission(id, permission) }
+                log(TAG) { "grantPermission($id, $permissionId, $mode->ADB)" }
+                return adbOps { it.grantPermission(id, permissionId) }
             }
 
             if (rootManager.canUseRootNow() && (mode == Mode.AUTO || mode == Mode.ROOT)) {
-                log(TAG) { "grantPermission($id, $permission, $mode->ROOT)" }
-                return rootOps { it.grantPermission(id, permission) }
-
+                log(TAG) { "grantPermission($id, $permissionId, $mode->ROOT)" }
+                return rootOps { it.grantPermission(id, permissionId) }
             }
 
             throw ModeUnavailableException("Mode $mode is unavailable")
@@ -365,36 +369,40 @@ class PkgOps @Inject constructor(
             if (e is ModeUnavailableException) {
                 log(TAG, DEBUG) { "grantPermission(...): $mode unavailable for $id" }
             } else {
-                log(TAG, WARN) { "grantPermission($id, $permission, $mode) failed: ${e.asLog()}" }
+                log(TAG, WARN) { "grantPermission($id, $permissionId, $mode) failed: ${e.asLog()}" }
             }
-            throw PkgOpsException(message = "grantPermission($id, $permission, $mode) failed", cause = e)
+            throw PkgOpsException(message = "grantPermission($id, $permissionId, $mode) failed", cause = e)
         }
     }
 
-    suspend fun revokePermission(id: InstallId, permission: Permission, mode: Mode = Mode.AUTO): Boolean {
+    suspend fun revokePermission(id: InstallId, permission: Permission, mode: Mode = Mode.AUTO): Boolean =
+        revokePermission(id, permission.permissionId, mode)
+
+    suspend fun revokePermission(id: InstallId, permissionId: String, mode: Mode = Mode.AUTO): Boolean {
         try {
-            log(TAG) { "revokePermission($id, $permission, $mode)" }
-            if (mode == Mode.NORMAL) throw PkgOpsException("revokePermission($id, $permission) does not support mode=NORMAL")
+            log(TAG) { "revokePermission($id, $permissionId, $mode)" }
+            if (mode == Mode.NORMAL) {
+                throw PkgOpsException("revokePermission($id, $permissionId) does not support mode=NORMAL")
+            }
 
             if (adbManager.canUseAdbNow() && (mode == Mode.AUTO || mode == Mode.ADB)) {
-                log(TAG) { "revokePermission($id, $permission, $mode->ADB)" }
-                return adbOps { it.revokePermission(id, permission) }
+                log(TAG) { "revokePermission($id, $permissionId, $mode->ADB)" }
+                return adbOps { it.revokePermission(id, permissionId) }
             }
 
             if (rootManager.canUseRootNow() && (mode == Mode.AUTO || mode == Mode.ROOT)) {
-                log(TAG) { "revokePermission($id, $permission, $mode->ROOT)" }
-                return rootOps { it.revokePermission(id, permission) }
-
+                log(TAG) { "revokePermission($id, $permissionId, $mode->ROOT)" }
+                return rootOps { it.revokePermission(id, permissionId) }
             }
 
             throw ModeUnavailableException("Mode $mode is unavailable")
         } catch (e: Exception) {
             if (e is ModeUnavailableException) {
-                log(TAG, DEBUG) { "grantPermission(...): $mode unavailable for $id" }
+                log(TAG, DEBUG) { "revokePermission(...): $mode unavailable for $id" }
             } else {
-                log(TAG, WARN) { "grantPermission($id, $permission, $mode) failed: ${e.asLog()}" }
+                log(TAG, WARN) { "revokePermission($id, $permissionId, $mode) failed: ${e.asLog()}" }
             }
-            throw PkgOpsException(message = "grantPermission($id, $permission, $mode) failed", cause = e)
+            throw PkgOpsException(message = "revokePermission($id, $permissionId, $mode) failed", cause = e)
         }
     }
 
