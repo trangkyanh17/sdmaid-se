@@ -15,7 +15,7 @@
     <string name="appcontrol_access_granted">Granted</string>
     <string name="appcontrol_access_denied">Denied</string>
     <string name="appcontrol_access_empty">No requested permissions.</string>
-    <string name="appcontrol_access_error">Couldn&apos;t load app permissions.</string>
+    <string name="appcontrol_access_error">Couldn\'t load app permissions.</string>
     <string name="appcontrol_app_launch_title">Launch app</string>
     <string name="appcontrol_app_launch_description">Launch this app\'s primary activity.</string>
     <string name="appcontrol_app_forcestop_title">Force stop</string>
