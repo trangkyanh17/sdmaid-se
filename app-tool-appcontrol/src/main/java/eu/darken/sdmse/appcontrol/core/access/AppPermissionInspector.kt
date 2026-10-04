@@ -47,9 +47,7 @@ class AppPermissionInspector @Inject constructor(
     private fun isRuntimeMutable(permissionId: String): Boolean {
         val info = try {
             context.packageManager.getPermissionInfo(permissionId, 0)
-        } catch (_: PackageManager.NameNotFoundException) {
-            return false
-        } catch (_: SecurityException) {
+        } catch (_: Exception) {
             return false
         }
 
