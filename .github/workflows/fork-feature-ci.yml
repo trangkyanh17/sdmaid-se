@@ -32,6 +32,22 @@ jobs:
       - name: Run AppControl tests
         run: ./gradlew :app-tool-appcontrol:testDebugUnitTest
 
+  common-tests:
+    name: Common module tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup project and build environment
+        uses: ./.github/actions/common-setup
+
+      - name: Run common module tests
+        run: ./gradlew testCommonModules
+
   tool-tests:
     name: Tool module tests
     runs-on: ubuntu-22.04
