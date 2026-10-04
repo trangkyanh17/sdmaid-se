@@ -1,5 +1,6 @@
 package eu.darken.sdmse.appcontrol.ui.access
 
+import eu.darken.sdmse.appcontrol.core.access.AppAccessController
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionInspector
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
@@ -34,9 +35,11 @@ class AppAccessViewModelTest : BaseTest() {
         )
         val inspector = mockk<AppPermissionInspector>()
         coEvery { inspector.inspect(id) } returns snapshot
+        val controller = mockk<AppAccessController>(relaxed = true)
         val vm = AppAccessViewModel(
             dispatcherProvider = TestDispatcherProvider(),
             inspector = inspector,
+            controller = controller,
         )
 
         vm.bindRoute(AppAccessRoute(id))
@@ -51,9 +54,11 @@ class AppAccessViewModelTest : BaseTest() {
         val id = installId("com.example.missing")
         val inspector = mockk<AppPermissionInspector>()
         coEvery { inspector.inspect(id) } returns null
+        val controller = mockk<AppAccessController>(relaxed = true)
         val vm = AppAccessViewModel(
             dispatcherProvider = TestDispatcherProvider(),
             inspector = inspector,
+            controller = controller,
         )
 
         vm.bindRoute(AppAccessRoute(id))
@@ -69,9 +74,11 @@ class AppAccessViewModelTest : BaseTest() {
         val failure = IllegalStateException("cross-user access unavailable")
         val inspector = mockk<AppPermissionInspector>()
         coEvery { inspector.inspect(id) } throws failure
+        val controller = mockk<AppAccessController>(relaxed = true)
         val vm = AppAccessViewModel(
             dispatcherProvider = TestDispatcherProvider(),
             inspector = inspector,
+            controller = controller,
         )
 
         val errors = mutableListOf<Throwable>()
@@ -95,9 +102,11 @@ class AppAccessViewModelTest : BaseTest() {
         val inspector = mockk<AppPermissionInspector>()
         coEvery { inspector.inspect(first) } returns firstSnapshot
         coEvery { inspector.inspect(second) } returns AppPermissionSnapshot(second, emptyList())
+        val controller = mockk<AppAccessController>(relaxed = true)
         val vm = AppAccessViewModel(
             dispatcherProvider = TestDispatcherProvider(),
             inspector = inspector,
+            controller = controller,
         )
 
         vm.bindRoute(AppAccessRoute(first))
@@ -107,5 +116,134 @@ class AppAccessViewModelTest : BaseTest() {
         vm.state.value shouldBe AppAccessViewModel.State.Ready(firstSnapshot)
         coVerify(exactly = 1) { inspector.inspect(first) }
         coVerify(exactly = 0) { inspector.inspect(second) }
+    }
+    @Test
+    fun `request on denied runtime permission creates grant confirmation`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.CAMERA"
+        val snapshot = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>(relaxed = true)
+        coEvery { inspector.inspect(id) } returns snapshot
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestPermissionMutation(permissionId)
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(
+            snapshot = snapshot,
+            pendingMutation = AppAccessViewModel.PermissionMutation(
+                permissionId,
+                AppAccessViewModel.PermissionAction.GRANT,
+            ),
+        )
+    }
+
+    @Test
+    fun `request on granted runtime permission creates revoke confirmation`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.RECORD_AUDIO"
+        val snapshot = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = true, runtimeMutable = true)),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>(relaxed = true)
+        coEvery { inspector.inspect(id) } returns snapshot
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestPermissionMutation(permissionId)
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(
+            snapshot = snapshot,
+            pendingMutation = AppAccessViewModel.PermissionMutation(
+                permissionId,
+                AppAccessViewModel.PermissionAction.REVOKE,
+            ),
+        )
+    }
+
+    @Test
+    fun `non runtime permission cannot create mutation confirmation`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.INTERNET"
+        val snapshot = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = true, runtimeMutable = false)),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>(relaxed = true)
+        coEvery { inspector.inspect(id) } returns snapshot
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestPermissionMutation(permissionId)
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(snapshot)
+    }
+
+    @Test
+    fun `confirm grant mutates exact permission then reloads actual state`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.CAMERA"
+        val before = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+        val after = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = true, runtimeMutable = true)),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>()
+        coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
+        coEvery { controller.grantRuntimePermission(id, permissionId) } returns true
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestPermissionMutation(permissionId)
+        vm.confirmPermissionMutation()
+        advanceUntilIdle()
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(after)
+        coVerify(exactly = 1) { controller.grantRuntimePermission(id, permissionId) }
+        coVerify(exactly = 2) { inspector.inspect(id) }
+    }
+
+    @Test
+    fun `confirm revoke mutates exact permission then reloads actual state`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.RECORD_AUDIO"
+        val before = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = true, runtimeMutable = true)),
+        )
+        val after = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>()
+        coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
+        coEvery { controller.revokeRuntimePermission(id, permissionId) } returns true
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestPermissionMutation(permissionId)
+        vm.confirmPermissionMutation()
+        advanceUntilIdle()
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(after)
+        coVerify(exactly = 1) { controller.revokeRuntimePermission(id, permissionId) }
+        coVerify(exactly = 2) { inspector.inspect(id) }
     }
 }

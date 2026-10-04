@@ -1,6 +1,7 @@
 package eu.darken.sdmse.appcontrol.ui.access
 
 import dagger.hilt.android.lifecycle.HiltViewModel
+import eu.darken.sdmse.appcontrol.core.access.AppAccessController
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionInspector
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
@@ -15,6 +16,7 @@ import javax.inject.Inject
 class AppAccessViewModel @Inject constructor(
     dispatcherProvider: DispatcherProvider,
     private val inspector: AppPermissionInspector,
+    private val controller: AppAccessController,
 ) : ViewModel4(dispatcherProvider, tag = TAG) {
 
     private var boundRoute: AppAccessRoute? = null
@@ -40,9 +42,29 @@ class AppAccessViewModel @Inject constructor(
         }
     }
 
+    fun requestPermissionMutation(permissionId: String) = Unit
+
+    fun dismissPermissionMutation() = Unit
+
+    fun confirmPermissionMutation() = Unit
+
+    data class PermissionMutation(
+        val permissionId: String,
+        val action: PermissionAction,
+    )
+
+    enum class PermissionAction {
+        GRANT,
+        REVOKE,
+    }
+
     sealed interface State {
         data object Loading : State
-        data class Ready(val snapshot: AppPermissionSnapshot) : State
+        data class Ready(
+            val snapshot: AppPermissionSnapshot,
+            val pendingMutation: PermissionMutation? = null,
+            val mutatingPermissionId: String? = null,
+        ) : State
         data class Error(val cause: Throwable) : State
         data object NotFound : State
     }
