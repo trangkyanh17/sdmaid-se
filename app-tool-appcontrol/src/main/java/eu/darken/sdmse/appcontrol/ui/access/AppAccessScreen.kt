@@ -66,6 +66,7 @@ internal fun AppAccessScreen(
     val title = when (val current = state) {
         is AppAccessViewModel.State.Ready -> current.snapshot.installId.pkgId.name
         AppAccessViewModel.State.Loading,
+        is AppAccessViewModel.State.Error,
         AppAccessViewModel.State.NotFound -> stringResource(R.string.appcontrol_access_title)
     }
 
@@ -96,6 +97,19 @@ internal fun AppAccessScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
             )
+
+            is AppAccessViewModel.State.Error -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.appcontrol_access_error),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             is AppAccessViewModel.State.Ready -> PermissionList(
                 snapshot = current.snapshot,
