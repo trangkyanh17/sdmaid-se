@@ -525,6 +525,9 @@ class PkgOps @Inject constructor(
 
     enum class AppOpsValue(val raw: String) {
         ALLOW("allow"),
+        IGNORE("ignore"),
+        DENY("deny"),
+        DEFAULT("default"),
         ;
     }
 
