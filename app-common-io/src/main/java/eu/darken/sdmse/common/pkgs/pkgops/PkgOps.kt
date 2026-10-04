@@ -410,7 +410,38 @@ class PkgOps @Inject constructor(
         id: InstallId,
         key: AppOpsKey,
         mode: Mode = Mode.AUTO,
-    ): AppOpsValue = AppOpsValue.DEFAULT
+    ): AppOpsValue {
+        try {
+            log(TAG) { "queryAppOps($id, $key, $mode)" }
+            if (mode == Mode.NORMAL) {
+                throw PkgOpsException("queryAppOps($id, $key) does not support mode=NORMAL")
+            }
+
+            val rawMode = when {
+                adbManager.canUseAdbNow() && (mode == Mode.AUTO || mode == Mode.ADB) -> {
+                    log(TAG) { "queryAppOps($id, $key, $mode->ADB)" }
+                    adbOps { it.getAppOpsMode(id, key.raw) }
+                }
+
+                rootManager.canUseRootNow() && (mode == Mode.AUTO || mode == Mode.ROOT) -> {
+                    log(TAG) { "queryAppOps($id, $key, $mode->ROOT)" }
+                    rootOps { it.getAppOpsMode(id, key.raw) }
+                }
+
+                else -> throw ModeUnavailableException("Mode $mode is unavailable")
+            }
+
+            return AppOpsValue.entries.singleOrNull { it.raw == rawMode }
+                ?: throw IllegalStateException("Unsupported AppOps mode '$rawMode' for $key")
+        } catch (e: Exception) {
+            if (e is ModeUnavailableException) {
+                log(TAG, DEBUG) { "queryAppOps(...): $mode unavailable for $id" }
+            } else {
+                log(TAG, WARN) { "queryAppOps($id, $key, $mode) failed: ${e.asLog()}" }
+            }
+            throw PkgOpsException(message = "queryAppOps($id, $key, $mode) failed", cause = e)
+        }
+    }
 
     suspend fun setAppOps(
         id: InstallId,

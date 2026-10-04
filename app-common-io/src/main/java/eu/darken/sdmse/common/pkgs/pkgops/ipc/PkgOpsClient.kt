@@ -115,7 +115,13 @@ class PkgOpsClient @AssistedInject constructor(
         }
     }
 
-    fun getAppOpsMode(id: InstallId, key: String): String = "default"
+    fun getAppOpsMode(id: InstallId, key: String): String = try {
+        connection.getAppOpsMode(id.pkgId.name, id.userHandle.handleId, key)
+    } catch (e: Exception) {
+        throw e.refineException().also {
+            log(TAG, ERROR) { "getAppOpsMode(id=$id, key=$key) failed: ${it.asLog()}" }
+        }
+    }
 
     fun setAppOps(id: InstallId, key: String, value: String): Boolean = try {
         connection.setAppOps(id.pkgId.name, id.userHandle.handleId, key, value)

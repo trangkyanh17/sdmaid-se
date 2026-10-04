@@ -237,7 +237,27 @@ class PkgOpsHost @Inject constructor(
         throw e.wrapToPropagate()
     }
 
-    override fun getAppOpsMode(packageName: String, handleId: Int, key: String): String = "default"
+    override fun getAppOpsMode(packageName: String, handleId: Int, key: String): String = try {
+        log(TAG, VERBOSE) { "getAppOpsMode($packageName, $handleId, $key)..." }
+        val result = runBlocking {
+            sharedShell.useRes {
+                FlowCmd("appops get --user $handleId $packageName $key").execute(it)
+            }
+        }
+        if (result.exitCode != FlowProcess.ExitCode.OK) {
+            throw UnsupportedOperationException(
+                "appops get failed for $packageName/$handleId/$key: ${result.errors.joinToString()}"
+            )
+        }
+
+        AppOpsOutputParser.parse(key, result.output)
+            ?: throw IllegalStateException(
+                "Could not parse appops mode for $packageName/$handleId/$key from: ${result.output}"
+            )
+    } catch (e: Exception) {
+        log(TAG, ERROR) { "getAppOpsMode($packageName, $handleId, $key) failed: ${e.asLog()}" }
+        throw e.wrapToPropagate()
+    }
 
     override fun setAppOps(packageName: String, handleId: Int, key: String, value: String): Boolean = try {
         log(TAG, VERBOSE) { "setAppOps($packageName, $handleId, $key, $value)..." }
