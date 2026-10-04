@@ -9,5 +9,6 @@ data class AppPermissionSnapshot(
     data class Entry(
         val name: String,
         val granted: Boolean,
+        val runtimeMutable: Boolean = false,
     )
 }

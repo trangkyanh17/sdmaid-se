@@ -1,13 +1,16 @@
 package eu.darken.sdmse.appcontrol.core.access
 
+import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import dagger.hilt.android.qualifiers.ApplicationContext
 import eu.darken.sdmse.common.pkgs.features.InstallId
 import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import javax.inject.Inject
 
 class AppPermissionInspector @Inject constructor(
     private val pkgOps: PkgOps,
+    @ApplicationContext private val context: Context,
 ) {
     suspend fun inspect(installId: InstallId): AppPermissionSnapshot? {
         val pkgInfo = pkgOps.queryPkg(
