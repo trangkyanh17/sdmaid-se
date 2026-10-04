@@ -36,6 +36,7 @@ import eu.darken.sdmse.common.debug.logging.log
 import eu.darken.sdmse.common.debug.logging.logTag
 import eu.darken.sdmse.common.flow.SingleEventFlow
 import eu.darken.sdmse.common.hasApiLevel
+import eu.darken.sdmse.common.pkgs.container.NormalPkg
 import eu.darken.sdmse.common.pkgs.features.InstallDetails
 import eu.darken.sdmse.common.pkgs.features.InstallId
 import eu.darken.sdmse.common.pkgs.getLaunchIntent
@@ -131,6 +132,7 @@ class AppActionViewModel @Inject constructor(
             isCurrentUser = isCurrentUser,
             launchAvailable = launchAvailable,
             appStoreAvailable = appStoreAvailable,
+            accessAvailable = appInfo.pkg is NormalPkg,
             canForceStop = acState.canForceStop,
             canArchive = acState.canArchive,
             canRestore = acState.canRestore,

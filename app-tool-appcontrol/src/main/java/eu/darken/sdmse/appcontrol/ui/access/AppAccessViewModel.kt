@@ -35,6 +35,7 @@ class AppAccessViewModel @Inject constructor(
     sealed interface State {
         data object Loading : State
         data class Ready(val snapshot: AppPermissionSnapshot) : State
+        data class Error(val cause: Throwable) : State
         data object NotFound : State
     }
 

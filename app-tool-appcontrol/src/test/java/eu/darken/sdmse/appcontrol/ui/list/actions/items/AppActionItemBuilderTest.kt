@@ -70,6 +70,7 @@ class AppActionItemBuilderTest : BaseTest() {
         isCurrentUser = true,
         launchAvailable = true,
         appStoreAvailable = true,
+        accessAvailable = true,
         canForceStop = true,
         canArchive = true,
         canRestore = true,
@@ -132,6 +133,18 @@ class AppActionItemBuilderTest : BaseTest() {
             AppActionItem.Action.Archive::class,
             AppActionItem.Action.Restore::class,
         )
+    }
+
+    @Test
+    fun `Access hidden when access capability is unavailable`() {
+        val info = appInfo()
+
+        val items = buildAppActionItems(
+            info,
+            ctxAllAvailable.copy(accessAvailable = false),
+        )
+
+        items.any { it is AppActionItem.Action.Access } shouldBe false
     }
 
     @Test

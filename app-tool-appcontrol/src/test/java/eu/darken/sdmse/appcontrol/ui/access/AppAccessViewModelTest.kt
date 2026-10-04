@@ -62,6 +62,23 @@ class AppAccessViewModelTest : BaseTest() {
     }
 
     @Test
+    fun `inspection failure leaves explicit Error state`() = runTest2 {
+        val id = installId("com.example.failure", userId = 10)
+        val failure = IllegalStateException("cross-user access unavailable")
+        val inspector = mockk<AppPermissionInspector>()
+        coEvery { inspector.inspect(id) } throws failure
+        val vm = AppAccessViewModel(
+            dispatcherProvider = TestDispatcherProvider(),
+            inspector = inspector,
+        )
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+
+        vm.state.value shouldBe AppAccessViewModel.State.Error(failure)
+    }
+
+    @Test
     fun `first route binding wins`() = runTest2 {
         val first = installId("com.example.first", userId = 10)
         val second = installId("com.example.second", userId = 11)

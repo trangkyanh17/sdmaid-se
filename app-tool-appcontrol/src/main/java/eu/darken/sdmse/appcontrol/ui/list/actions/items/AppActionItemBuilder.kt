@@ -16,6 +16,8 @@ import eu.darken.sdmse.exclusion.core.types.ExclusionId
  *   profile anyway.
  * - [appStoreAvailable] reflects `(pkg as? InstallDetails)?.installerInfo?.installer != null` —
  *   the installer is known and the AppStore intent is constructible.
+ * - [accessAvailable] is true only for a normal package that can be queried reliably through
+ *   PackageManager/PkgOps for permission metadata; archived/hidden/uninstalled/library rows stay out.
  * - [canForceStop] / [canArchive] / [canRestore] / [canToggle] mirror the corresponding flags on
  *   `AppControl.State`. Combined with `AppInfo.canBeStopped` / `canBeArchived` / `canBeRestored` /
  *   `canBeToggled` they decide if the row is visible.
@@ -26,6 +28,7 @@ data class AppActionItemContext(
     val isCurrentUser: Boolean,
     val launchAvailable: Boolean,
     val appStoreAvailable: Boolean,
+    val accessAvailable: Boolean,
     val canForceStop: Boolean,
     val canArchive: Boolean,
     val canRestore: Boolean,

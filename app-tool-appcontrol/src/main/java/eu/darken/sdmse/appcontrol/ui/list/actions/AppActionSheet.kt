@@ -416,6 +416,7 @@ private fun AppActionSheetPreview() {
             isCurrentUser = true,
             launchAvailable = true,
             appStoreAvailable = true,
+            accessAvailable = true,
             canForceStop = true,
             canArchive = false,
             canRestore = false,
