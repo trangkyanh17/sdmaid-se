@@ -10,6 +10,8 @@ import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle
 import org.junit.jupiter.api.Test
 import testhelpers.BaseTest
@@ -72,10 +74,17 @@ class AppAccessViewModelTest : BaseTest() {
             inspector = inspector,
         )
 
+        val errors = mutableListOf<Throwable>()
+        val errorJob = launch(start = CoroutineStart.UNDISPATCHED) {
+            vm.errorEvents.collect { errors.add(it) }
+        }
+
         vm.bindRoute(AppAccessRoute(id))
         advanceUntilIdle()
 
         vm.state.value shouldBe AppAccessViewModel.State.Error(failure)
+        errors shouldBe listOf(failure)
+        errorJob.cancel()
     }
 
     @Test

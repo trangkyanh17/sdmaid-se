@@ -6,6 +6,7 @@ import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.common.coroutine.DispatcherProvider
 import eu.darken.sdmse.common.uix.ViewModel4
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -26,9 +27,16 @@ class AppAccessViewModel @Inject constructor(
 
         launch {
             statePub.value = State.Loading
-            statePub.value = inspector.inspect(route.installId)
-                ?.let(State::Ready)
-                ?: State.NotFound
+            try {
+                statePub.value = inspector.inspect(route.installId)
+                    ?.let(State::Ready)
+                    ?: State.NotFound
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                statePub.value = State.Error(e)
+                errorEvents.emit(e)
+            }
         }
     }
 
