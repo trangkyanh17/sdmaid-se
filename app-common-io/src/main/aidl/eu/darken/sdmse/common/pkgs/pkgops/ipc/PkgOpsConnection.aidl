@@ -30,6 +30,8 @@ interface PkgOpsConnection {
 
     boolean revokePermission(String packageName, int handleId, String permissionId);
 
+    String getAppOpsMode(String packageName, int handleId, String key);
+
     boolean setAppOps(String packageName, int handleId, String key, String value);
 
     void requestUnarchive(String packageName, in IntentSender statusReceiver);

@@ -237,6 +237,8 @@ class PkgOpsHost @Inject constructor(
         throw e.wrapToPropagate()
     }
 
+    override fun getAppOpsMode(packageName: String, handleId: Int, key: String): String = "default"
+
     override fun setAppOps(packageName: String, handleId: Int, key: String, value: String): Boolean = try {
         log(TAG, VERBOSE) { "setAppOps($packageName, $handleId, $key, $value)..." }
         val result = runBlocking {

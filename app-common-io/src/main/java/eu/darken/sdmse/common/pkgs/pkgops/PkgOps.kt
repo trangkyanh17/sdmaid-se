@@ -406,6 +406,12 @@ class PkgOps @Inject constructor(
         }
     }
 
+    suspend fun queryAppOps(
+        id: InstallId,
+        key: AppOpsKey,
+        mode: Mode = Mode.AUTO,
+    ): AppOpsValue = AppOpsValue.DEFAULT
+
     suspend fun setAppOps(
         id: InstallId,
         key: AppOpsKey,
