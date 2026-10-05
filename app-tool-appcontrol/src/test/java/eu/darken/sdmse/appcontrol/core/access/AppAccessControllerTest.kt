@@ -90,4 +90,14 @@ class AppAccessControllerTest : BaseTest() {
 
         coVerify(exactly = 0) { pkgOps.grantPermission(any(), any<String>()) }
     }
+    @Test
+    fun `set appop forwards exact id key and value`() = runTest {
+        val key = PkgOps.AppOpsKey.GET_USAGE_STATS
+        val value = PkgOps.AppOpsValue.IGNORE
+        coEvery { pkgOps.setAppOps(installId, key, value) } returns true
+
+        controller.setAppOp(installId, key, value) shouldBe true
+
+        coVerify(exactly = 1) { pkgOps.setAppOps(installId, key, value) }
+    }
 }

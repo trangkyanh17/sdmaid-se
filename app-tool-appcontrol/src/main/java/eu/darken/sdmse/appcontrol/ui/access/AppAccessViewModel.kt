@@ -2,10 +2,12 @@ package eu.darken.sdmse.appcontrol.ui.access
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 import eu.darken.sdmse.appcontrol.core.access.AppAccessController
+import eu.darken.sdmse.appcontrol.core.access.AppOpEntry
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionInspector
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.common.coroutine.DispatcherProvider
+import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import eu.darken.sdmse.common.uix.ViewModel4
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -110,9 +112,20 @@ class AppAccessViewModel @Inject constructor(
         }
     }
 
+    fun requestAppOpMutation(key: PkgOps.AppOpsKey) = Unit
+
+    fun dismissAppOpMutation() = Unit
+
+    fun selectAppOpValue(value: PkgOps.AppOpsValue) = Unit
+
     data class PermissionMutation(
         val permissionId: String,
         val action: PermissionAction,
+    )
+
+    data class AppOpMutation(
+        val key: PkgOps.AppOpsKey,
+        val currentValue: PkgOps.AppOpsValue,
     )
 
     enum class PermissionAction {
@@ -126,6 +139,10 @@ class AppAccessViewModel @Inject constructor(
             val snapshot: AppPermissionSnapshot,
             val pendingMutation: PermissionMutation? = null,
             val mutatingPermissionId: String? = null,
+            val appOps: List<AppOpEntry> = emptyList(),
+            val appOpsError: Throwable? = null,
+            val pendingAppOpMutation: AppOpMutation? = null,
+            val mutatingAppOpKey: PkgOps.AppOpsKey? = null,
         ) : State
         data class Error(val cause: Throwable) : State
         data object NotFound : State

@@ -1,11 +1,13 @@
 package eu.darken.sdmse.appcontrol.ui.access
 
 import eu.darken.sdmse.appcontrol.core.access.AppAccessController
+import eu.darken.sdmse.appcontrol.core.access.AppOpEntry
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionInspector
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.common.pkgs.Pkg
 import eu.darken.sdmse.common.pkgs.features.InstallId
+import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import eu.darken.sdmse.common.user.UserHandle2
 import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
@@ -245,5 +247,90 @@ class AppAccessViewModelTest : BaseTest() {
         vm.state.value shouldBe AppAccessViewModel.State.Ready(after)
         coVerify(exactly = 1) { controller.revokeRuntimePermission(id, permissionId) }
         coVerify(exactly = 2) { inspector.inspect(id) }
+    }
+    @Test
+    fun `binding also loads appops for exact target`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionSnapshot = AppPermissionSnapshot(id, emptyList())
+        val appOps = listOf(
+            AppOpEntry(PkgOps.AppOpsKey.GET_USAGE_STATS, PkgOps.AppOpsValue.ALLOW),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>()
+        coEvery { inspector.inspect(id) } returns permissionSnapshot
+        coEvery { controller.queryAppOps(id) } returns appOps
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(
+            snapshot = permissionSnapshot,
+            appOps = appOps,
+        )
+        coVerify(exactly = 1) { controller.queryAppOps(id) }
+    }
+
+    @Test
+    fun `appops query failure preserves permission screen and marks appops unavailable`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionSnapshot = AppPermissionSnapshot(id, emptyList())
+        val failure = IllegalStateException("appops unavailable")
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>()
+        coEvery { inspector.inspect(id) } returns permissionSnapshot
+        coEvery { controller.queryAppOps(id) } throws failure
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(
+            snapshot = permissionSnapshot,
+            appOpsError = failure,
+        )
+    }
+
+    @Test
+    fun `selecting appop value sets exact key then requeries actual modes`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionSnapshot = AppPermissionSnapshot(id, emptyList())
+        val before = listOf(
+            AppOpEntry(PkgOps.AppOpsKey.GET_USAGE_STATS, PkgOps.AppOpsValue.DEFAULT),
+        )
+        val after = listOf(
+            AppOpEntry(PkgOps.AppOpsKey.GET_USAGE_STATS, PkgOps.AppOpsValue.IGNORE),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>()
+        coEvery { inspector.inspect(id) } returns permissionSnapshot
+        coEvery { controller.queryAppOps(id) } returnsMany listOf(before, after)
+        coEvery {
+            controller.setAppOp(
+                id,
+                PkgOps.AppOpsKey.GET_USAGE_STATS,
+                PkgOps.AppOpsValue.IGNORE,
+            )
+        } returns true
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestAppOpMutation(PkgOps.AppOpsKey.GET_USAGE_STATS)
+        vm.selectAppOpValue(PkgOps.AppOpsValue.IGNORE)
+        advanceUntilIdle()
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(
+            snapshot = permissionSnapshot,
+            appOps = after,
+        )
+        coVerify(exactly = 1) {
+            controller.setAppOp(
+                id,
+                PkgOps.AppOpsKey.GET_USAGE_STATS,
+                PkgOps.AppOpsValue.IGNORE,
+            )
+        }
+        coVerify(exactly = 2) { controller.queryAppOps(id) }
     }
 }
