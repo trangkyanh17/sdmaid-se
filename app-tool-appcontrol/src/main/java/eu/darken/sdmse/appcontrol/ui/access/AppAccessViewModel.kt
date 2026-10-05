@@ -44,7 +44,12 @@ class AppAccessViewModel @Inject constructor(
 
     fun requestPermissionMutation(permissionId: String) {
         val ready = statePub.value as? State.Ready ?: return
-        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+        if (
+            ready.mutatingPermissionId != null ||
+            ready.mutatingAppOpKey != null ||
+            ready.pendingMutation != null ||
+            ready.pendingAppOpMutation != null
+        ) return
 
         val permission = ready.snapshot.permissions.singleOrNull { it.name == permissionId } ?: return
         if (!permission.runtimeMutable) return
@@ -64,14 +69,18 @@ class AppAccessViewModel @Inject constructor(
 
     fun dismissPermissionMutation() {
         val ready = statePub.value as? State.Ready ?: return
-        if (ready.mutatingPermissionId != null) return
+        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
         statePub.value = ready.copy(pendingMutation = null)
     }
 
     fun confirmPermissionMutation() {
         val ready = statePub.value as? State.Ready ?: return
         val mutation = ready.pendingMutation ?: return
-        if (ready.mutatingPermissionId != null) return
+        if (
+            ready.mutatingPermissionId != null ||
+            ready.mutatingAppOpKey != null ||
+            ready.pendingAppOpMutation != null
+        ) return
 
         val installId = ready.snapshot.installId
         statePub.value = ready.copy(
@@ -113,7 +122,12 @@ class AppAccessViewModel @Inject constructor(
 
     fun requestAppOpMutation(key: PkgOps.AppOpsKey) {
         val ready = statePub.value as? State.Ready ?: return
-        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+        if (
+            ready.mutatingPermissionId != null ||
+            ready.mutatingAppOpKey != null ||
+            ready.pendingMutation != null ||
+            ready.pendingAppOpMutation != null
+        ) return
 
         val entry = ready.appOps.singleOrNull { it.key == key } ?: return
         statePub.value = ready.copy(
@@ -133,7 +147,11 @@ class AppAccessViewModel @Inject constructor(
     fun selectAppOpValue(value: PkgOps.AppOpsValue) {
         val ready = statePub.value as? State.Ready ?: return
         val mutation = ready.pendingAppOpMutation ?: return
-        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+        if (
+            ready.mutatingPermissionId != null ||
+            ready.mutatingAppOpKey != null ||
+            ready.pendingMutation != null
+        ) return
 
         if (value == mutation.currentValue) {
             statePub.value = ready.copy(pendingAppOpMutation = null)
