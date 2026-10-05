@@ -335,4 +335,35 @@ class AppAccessViewModelTest : BaseTest() {
         }
         coVerify(exactly = 2) { controller.queryAppOps(id) }
     }
+    @Test
+    fun `pending permission confirmation blocks appops selector`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.CAMERA"
+        val permissionSnapshot = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+        val appOps = listOf(
+            AppOpEntry(PkgOps.AppOpsKey.GET_USAGE_STATS, PkgOps.AppOpsValue.DEFAULT),
+        )
+        val inspector = mockk<AppPermissionInspector>()
+        val controller = mockk<AppAccessController>()
+        coEvery { inspector.inspect(id) } returns permissionSnapshot
+        coEvery { controller.queryAppOps(id) } returns appOps
+        val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
+
+        vm.bindRoute(AppAccessRoute(id))
+        advanceUntilIdle()
+        vm.requestPermissionMutation(permissionId)
+        vm.requestAppOpMutation(PkgOps.AppOpsKey.GET_USAGE_STATS)
+
+        vm.state.value shouldBe AppAccessViewModel.State.Ready(
+            snapshot = permissionSnapshot,
+            pendingMutation = AppAccessViewModel.PermissionMutation(
+                permissionId,
+                AppAccessViewModel.PermissionAction.GRANT,
+            ),
+            appOps = appOps,
+        )
+    }
 }
