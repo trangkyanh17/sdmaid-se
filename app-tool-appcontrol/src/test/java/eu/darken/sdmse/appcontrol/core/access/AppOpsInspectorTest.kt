@@ -23,7 +23,7 @@ class AppOpsInspectorTest : BaseTest() {
         coEvery { pkgOps.queryAppOps(id, PkgOps.AppOpsKey.MANAGE_EXTERNAL_STORAGE) } returns PkgOps.AppOpsValue.IGNORE
         coEvery { pkgOps.queryAppOps(id, PkgOps.AppOpsKey.ACCESS_RESTRICTED_SETTINGS) } returns PkgOps.AppOpsValue.DEFAULT
 
-        AppOpsInspector.inspect(pkgOps, id).shouldContainExactly(
+        AppOpsInspector.inspect(pkgOps, id, apiLevel = 36).shouldContainExactly(
             AppOpEntry(PkgOps.AppOpsKey.GET_USAGE_STATS, PkgOps.AppOpsValue.ALLOW),
             AppOpEntry(PkgOps.AppOpsKey.MANAGE_EXTERNAL_STORAGE, PkgOps.AppOpsValue.IGNORE),
             AppOpEntry(PkgOps.AppOpsKey.ACCESS_RESTRICTED_SETTINGS, PkgOps.AppOpsValue.DEFAULT),
@@ -31,6 +31,28 @@ class AppOpsInspectorTest : BaseTest() {
 
         PkgOps.AppOpsKey.entries.forEach { key ->
             coVerify(exactly = 1) { pkgOps.queryAppOps(id, key) }
+        }
+    }
+    @Test
+    fun `older Android skips unavailable appops keys`() = runTest {
+        val id = InstallId(Pkg.Id("com.example.app"), UserHandle2(10))
+        val pkgOps = mockk<PkgOps>()
+        coEvery {
+            pkgOps.queryAppOps(id, PkgOps.AppOpsKey.GET_USAGE_STATS)
+        } returns PkgOps.AppOpsValue.DEFAULT
+
+        AppOpsInspector.inspect(pkgOps, id, apiLevel = 29).shouldContainExactly(
+            AppOpEntry(PkgOps.AppOpsKey.GET_USAGE_STATS, PkgOps.AppOpsValue.DEFAULT),
+        )
+
+        coVerify(exactly = 1) {
+            pkgOps.queryAppOps(id, PkgOps.AppOpsKey.GET_USAGE_STATS)
+        }
+        coVerify(exactly = 0) {
+            pkgOps.queryAppOps(id, PkgOps.AppOpsKey.MANAGE_EXTERNAL_STORAGE)
+        }
+        coVerify(exactly = 0) {
+            pkgOps.queryAppOps(id, PkgOps.AppOpsKey.ACCESS_RESTRICTED_SETTINGS)
         }
     }
 }
