@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.twotone.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.darken.sdmse.appcontrol.R
+import eu.darken.sdmse.appcontrol.core.access.AppOpEntry
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.common.compose.dialog.SdmConfirmDialog
@@ -37,6 +39,7 @@ import eu.darken.sdmse.common.compose.layout.SdmTooltipIconButton
 import eu.darken.sdmse.common.compose.progress.ProgressOverlay
 import eu.darken.sdmse.common.error.ErrorEventHandler
 import eu.darken.sdmse.common.navigation.NavigationEventHandler
+import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import eu.darken.sdmse.common.R as CommonR
@@ -57,6 +60,9 @@ fun AppAccessScreenHost(
         onPermissionMutationRequested = vm::requestPermissionMutation,
         onPermissionMutationDismissed = vm::dismissPermissionMutation,
         onPermissionMutationConfirmed = vm::confirmPermissionMutation,
+        onAppOpMutationRequested = vm::requestAppOpMutation,
+        onAppOpMutationDismissed = vm::dismissAppOpMutation,
+        onAppOpValueSelected = vm::selectAppOpValue,
     )
 }
 
@@ -68,6 +74,9 @@ internal fun AppAccessScreen(
     onPermissionMutationRequested: (String) -> Unit = {},
     onPermissionMutationDismissed: () -> Unit = {},
     onPermissionMutationConfirmed: () -> Unit = {},
+    onAppOpMutationRequested: (PkgOps.AppOpsKey) -> Unit = {},
+    onAppOpMutationDismissed: () -> Unit = {},
+    onAppOpValueSelected: (PkgOps.AppOpsValue) -> Unit = {},
 ) {
     val state by stateSource.collectAsStateWithLifecycle()
 
@@ -128,6 +137,10 @@ internal fun AppAccessScreen(
                 contentPadding = paddingValues,
                 mutatingPermissionId = current.mutatingPermissionId,
                 onPermissionMutationRequested = onPermissionMutationRequested,
+                appOps = current.appOps,
+                appOpsError = current.appOpsError,
+                mutatingAppOpKey = current.mutatingAppOpKey,
+                onAppOpMutationRequested = onAppOpMutationRequested,
             )
         }
     }
@@ -140,6 +153,14 @@ internal fun AppAccessScreen(
             onConfirm = onPermissionMutationConfirmed,
         )
     }
+
+    readyState?.pendingAppOpMutation?.let { mutation ->
+        AppOpModeDialog(
+            mutation = mutation,
+            onDismiss = onAppOpMutationDismissed,
+            onValueSelected = onAppOpValueSelected,
+        )
+    }
 }
 
 @Composable
@@ -148,6 +169,10 @@ private fun PermissionList(
     contentPadding: PaddingValues,
     mutatingPermissionId: String?,
     onPermissionMutationRequested: (String) -> Unit,
+    appOps: List<AppOpEntry>,
+    appOpsError: Throwable?,
+    mutatingAppOpKey: PkgOps.AppOpsKey?,
+    onAppOpMutationRequested: (PkgOps.AppOpsKey) -> Unit,
 ) {
     val grantedCount = snapshot.permissions.count { it.granted }
 
@@ -205,6 +230,35 @@ private fun PermissionList(
                     permission = permission,
                     mutatingPermissionId = mutatingPermissionId,
                     onPermissionMutationRequested = onPermissionMutationRequested,
+                )
+                HorizontalDivider()
+            }
+        }
+
+        item("appops_header") {
+            Text(
+                text = stringResource(R.string.appcontrol_appops_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+            )
+        }
+
+        if (appOpsError != null) {
+            item("appops_error") {
+                Text(
+                    text = stringResource(R.string.appcontrol_appops_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            }
+        } else {
+            items(appOps, key = { it.key.raw }) { appOp ->
+                AppOpRow(
+                    entry = appOp,
+                    mutationInProgress = mutatingAppOpKey != null,
+                    isThisAppOpMutating = mutatingAppOpKey == appOp.key,
+                    onMutationRequested = onAppOpMutationRequested,
                 )
                 HorizontalDivider()
             }
@@ -273,6 +327,94 @@ private fun PermissionRow(
             )
         }
     }
+}
+
+@Composable
+private fun AppOpRow(
+    entry: AppOpEntry,
+    mutationInProgress: Boolean,
+    isThisAppOpMutating: Boolean,
+    onMutationRequested: (PkgOps.AppOpsKey) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = entry.key.raw,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = entry.value.raw,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        TextButton(
+            enabled = !mutationInProgress,
+            onClick = { onMutationRequested(entry.key) },
+        ) {
+            Text(
+                text = stringResource(
+                    if (isThisAppOpMutating) {
+                        R.string.appcontrol_access_updating
+                    } else {
+                        R.string.appcontrol_appops_change
+                    },
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppOpModeDialog(
+    mutation: AppAccessViewModel.AppOpMutation,
+    onDismiss: () -> Unit,
+    onValueSelected: (PkgOps.AppOpsValue) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.appcontrol_appops_choose_mode))
+        },
+        text = {
+            Column {
+                Text(
+                    text = mutation.key.raw,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                PkgOps.AppOpsValue.entries.forEach { value ->
+                    TextButton(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onValueSelected(value) },
+                    ) {
+                        Text(
+                            text = if (value == mutation.currentValue) {
+                                "${value.raw} •"
+                            } else {
+                                value.raw
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(CommonR.string.general_cancel_action))
+            }
+        },
+    )
 }
 
 @Composable

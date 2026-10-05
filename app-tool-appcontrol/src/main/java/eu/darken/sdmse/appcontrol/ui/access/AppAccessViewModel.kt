@@ -32,9 +32,7 @@ class AppAccessViewModel @Inject constructor(
         launch {
             statePub.value = State.Loading
             try {
-                statePub.value = inspector.inspect(route.installId)
-                    ?.let(State::Ready)
-                    ?: State.NotFound
+                statePub.value = loadAccessState(route.installId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -46,7 +44,7 @@ class AppAccessViewModel @Inject constructor(
 
     fun requestPermissionMutation(permissionId: String) {
         val ready = statePub.value as? State.Ready ?: return
-        if (ready.mutatingPermissionId != null) return
+        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
 
         val permission = ready.snapshot.permissions.singleOrNull { it.name == permissionId } ?: return
         if (!permission.runtimeMutable) return
@@ -100,23 +98,105 @@ class AppAccessViewModel @Inject constructor(
                     )
                 }
 
-                statePub.value = inspector.inspect(installId)
-                    ?.let(State::Ready)
-                    ?: State.NotFound
+                statePub.value = loadAccessState(installId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                statePub.value = State.Ready(snapshot = ready.snapshot)
+                statePub.value = ready.copy(
+                    pendingMutation = null,
+                    mutatingPermissionId = null,
+                )
                 errorEvents.emit(e)
             }
         }
     }
 
-    fun requestAppOpMutation(key: PkgOps.AppOpsKey) = Unit
+    fun requestAppOpMutation(key: PkgOps.AppOpsKey) {
+        val ready = statePub.value as? State.Ready ?: return
+        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
 
-    fun dismissAppOpMutation() = Unit
+        val entry = ready.appOps.singleOrNull { it.key == key } ?: return
+        statePub.value = ready.copy(
+            pendingAppOpMutation = AppOpMutation(
+                key = key,
+                currentValue = entry.value,
+            ),
+        )
+    }
 
-    fun selectAppOpValue(value: PkgOps.AppOpsValue) = Unit
+    fun dismissAppOpMutation() {
+        val ready = statePub.value as? State.Ready ?: return
+        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+        statePub.value = ready.copy(pendingAppOpMutation = null)
+    }
+
+    fun selectAppOpValue(value: PkgOps.AppOpsValue) {
+        val ready = statePub.value as? State.Ready ?: return
+        val mutation = ready.pendingAppOpMutation ?: return
+        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+
+        if (value == mutation.currentValue) {
+            statePub.value = ready.copy(pendingAppOpMutation = null)
+            return
+        }
+
+        val installId = ready.snapshot.installId
+        statePub.value = ready.copy(
+            pendingAppOpMutation = null,
+            mutatingAppOpKey = mutation.key,
+        )
+
+        launch {
+            try {
+                val changed = controller.setAppOp(
+                    installId = installId,
+                    key = mutation.key,
+                    value = value,
+                )
+                if (!changed) {
+                    throw IllegalStateException(
+                        "AppOps mutation rejected for ${mutation.key} -> $value"
+                    )
+                }
+
+                val actual = controller.queryAppOps(installId)
+                statePub.value = ready.copy(
+                    appOps = actual,
+                    appOpsError = null,
+                    pendingAppOpMutation = null,
+                    mutatingAppOpKey = null,
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                statePub.value = ready.copy(
+                    appOpsError = e,
+                    pendingAppOpMutation = null,
+                    mutatingAppOpKey = null,
+                )
+                errorEvents.emit(e)
+            }
+        }
+    }
+
+    private suspend fun loadAccessState(installId: eu.darken.sdmse.common.pkgs.features.InstallId): State {
+        val snapshot = inspector.inspect(installId) ?: return State.NotFound
+
+        return try {
+            State.Ready(
+                snapshot = snapshot,
+                appOps = controller.queryAppOps(installId),
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            errorEvents.emit(e)
+            State.Ready(
+                snapshot = snapshot,
+                appOpsError = e,
+            )
+        }
+    }
 
     data class PermissionMutation(
         val permissionId: String,

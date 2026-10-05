@@ -17,13 +17,14 @@ class AppAccessController @Inject constructor(
         return pkgOps.grantPermission(installId, permissionId)
     }
 
-    suspend fun queryAppOps(installId: InstallId): List<AppOpEntry> = emptyList()
+    suspend fun queryAppOps(installId: InstallId): List<AppOpEntry> =
+        AppOpsInspector.inspect(pkgOps, installId)
 
     suspend fun setAppOp(
         installId: InstallId,
         key: PkgOps.AppOpsKey,
         value: PkgOps.AppOpsValue,
-    ): Boolean = false
+    ): Boolean = pkgOps.setAppOps(installId, key, value)
 
     suspend fun revokeRuntimePermission(
         installId: InstallId,

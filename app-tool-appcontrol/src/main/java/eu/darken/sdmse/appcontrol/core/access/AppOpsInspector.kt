@@ -7,5 +7,10 @@ internal object AppOpsInspector {
     suspend fun inspect(
         pkgOps: PkgOps,
         installId: InstallId,
-    ): List<AppOpEntry> = emptyList()
+    ): List<AppOpEntry> = PkgOps.AppOpsKey.entries.map { key ->
+        AppOpEntry(
+            key = key,
+            value = pkgOps.queryAppOps(installId, key),
+        )
+    }
 }

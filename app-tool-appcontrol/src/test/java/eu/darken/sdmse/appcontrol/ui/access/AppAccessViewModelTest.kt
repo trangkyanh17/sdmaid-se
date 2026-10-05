@@ -205,6 +205,7 @@ class AppAccessViewModelTest : BaseTest() {
         )
         val inspector = mockk<AppPermissionInspector>()
         val controller = mockk<AppAccessController>()
+        coEvery { controller.queryAppOps(id) } returns emptyList()
         coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
         coEvery { controller.grantRuntimePermission(id, permissionId) } returns true
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
@@ -234,6 +235,7 @@ class AppAccessViewModelTest : BaseTest() {
         )
         val inspector = mockk<AppPermissionInspector>()
         val controller = mockk<AppAccessController>()
+        coEvery { controller.queryAppOps(id) } returns emptyList()
         coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
         coEvery { controller.revokeRuntimePermission(id, permissionId) } returns true
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
