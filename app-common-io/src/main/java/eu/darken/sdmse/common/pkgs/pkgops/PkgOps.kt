@@ -547,11 +547,16 @@ class PkgOps @Inject constructor(
         null
     }
 
-    enum class AppOpsKey(val raw: String) {
-        GET_USAGE_STATS("GET_USAGE_STATS"),
-        MANAGE_EXTERNAL_STORAGE("MANAGE_EXTERNAL_STORAGE"),
-        ACCESS_RESTRICTED_SETTINGS("ACCESS_RESTRICTED_SETTINGS"),
+    enum class AppOpsKey(
+        val raw: String,
+        val minApi: Int,
+    ) {
+        GET_USAGE_STATS("GET_USAGE_STATS", 21),
+        MANAGE_EXTERNAL_STORAGE("MANAGE_EXTERNAL_STORAGE", 30),
+        ACCESS_RESTRICTED_SETTINGS("ACCESS_RESTRICTED_SETTINGS", 33),
         ;
+
+        fun isSupported(apiLevel: Int): Boolean = apiLevel >= minApi
     }
 
     enum class AppOpsValue(val raw: String) {
