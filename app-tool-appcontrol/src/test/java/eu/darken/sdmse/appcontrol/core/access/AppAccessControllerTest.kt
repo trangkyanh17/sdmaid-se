@@ -219,4 +219,136 @@ class AppAccessControllerTest : BaseTest() {
         coVerify(exactly = 0) { pkgOps.setAppOps(any(), any(), any()) }
         coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any()) }
     }
+    @Test
+    fun `undo rejects operation from another android user`() = runTest {
+        val operation = AppAccessOperation(
+            id = "op",
+            packageName = installId.pkgId.name,
+            userId = 0,
+            kind = AppAccessOperation.Kind.RUNTIME_PERMISSION,
+            subjectId = "android.permission.CAMERA",
+            before = AppAccessOperation.Value.Permission(false),
+            after = AppAccessOperation.Value.Permission(true),
+            createdAt = java.time.Instant.EPOCH,
+        )
+        coEvery { history.get("op") } returns operation
+
+        controller.undo(installId, "op") shouldBe null
+
+        coVerify(exactly = 0) { inspector.inspect(any()) }
+        coVerify(exactly = 0) { pkgOps.grantPermission(any(), any<String>()) }
+        coVerify(exactly = 0) { pkgOps.revokePermission(any(), any<String>()) }
+    }
+
+    @Test
+    fun `undo rejects already reverted operation`() = runTest {
+        val operation = AppAccessOperation(
+            id = "op",
+            packageName = installId.pkgId.name,
+            userId = installId.userHandle.handleId,
+            kind = AppAccessOperation.Kind.RUNTIME_PERMISSION,
+            subjectId = "android.permission.CAMERA",
+            before = AppAccessOperation.Value.Permission(false),
+            after = AppAccessOperation.Value.Permission(true),
+            createdAt = java.time.Instant.EPOCH,
+        )
+        coEvery { history.get("op") } returns operation
+        coEvery { history.hasRevert("op") } returns true
+
+        controller.undo(installId, "op") shouldBe null
+
+        coVerify(exactly = 0) { inspector.inspect(any()) }
+    }
+
+    @Test
+    fun `permission undo refuses state drift without mutation`() = runTest {
+        val permissionId = "android.permission.CAMERA"
+        val operation = AppAccessOperation(
+            id = "op",
+            packageName = installId.pkgId.name,
+            userId = installId.userHandle.handleId,
+            kind = AppAccessOperation.Kind.RUNTIME_PERMISSION,
+            subjectId = permissionId,
+            before = AppAccessOperation.Value.Permission(false),
+            after = AppAccessOperation.Value.Permission(true),
+            createdAt = java.time.Instant.EPOCH,
+        )
+        coEvery { history.get("op") } returns operation
+        coEvery { history.hasRevert("op") } returns false
+        coEvery { inspector.inspect(installId) } returns AppPermissionSnapshot(
+            installId,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+
+        controller.undo(installId, "op") shouldBe null
+
+        coVerify(exactly = 0) { pkgOps.revokePermission(any(), any<String>()) }
+        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `permission undo verifies inverse and appends one compensating record`() = runTest {
+        val permissionId = "android.permission.CAMERA"
+        val operation = AppAccessOperation(
+            id = "op",
+            packageName = installId.pkgId.name,
+            userId = installId.userHandle.handleId,
+            kind = AppAccessOperation.Kind.RUNTIME_PERMISSION,
+            subjectId = permissionId,
+            before = AppAccessOperation.Value.Permission(false),
+            after = AppAccessOperation.Value.Permission(true),
+            createdAt = java.time.Instant.EPOCH,
+        )
+        val current = AppPermissionSnapshot(
+            installId,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = true, runtimeMutable = true)),
+        )
+        val reverted = AppPermissionSnapshot(
+            installId,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+        coEvery { history.get("op") } returns operation
+        coEvery { history.hasRevert("op") } returns false
+        coEvery { inspector.inspect(installId) } returnsMany listOf(current, reverted)
+        coEvery { pkgOps.revokePermission(installId, permissionId) } returns true
+        coEvery { history.record(any(), any(), any(), any(), any(), any()) } returns mockk()
+
+        controller.undo(installId, "op") shouldBe AppAccessController.UndoResult()
+
+        coVerify(exactly = 1) { pkgOps.revokePermission(installId, permissionId) }
+        coVerify(exactly = 1) {
+            history.record(
+                installId = installId,
+                kind = AppAccessOperation.Kind.RUNTIME_PERMISSION,
+                subjectId = permissionId,
+                before = AppAccessOperation.Value.Permission(true),
+                after = AppAccessOperation.Value.Permission(false),
+                revertOf = "op",
+            )
+        }
+    }
+
+    @Test
+    fun `appops undo refuses drifted current mode`() = runTest {
+        val key = PkgOps.AppOpsKey.GET_USAGE_STATS
+        val operation = AppAccessOperation(
+            id = "op",
+            packageName = installId.pkgId.name,
+            userId = installId.userHandle.handleId,
+            kind = AppAccessOperation.Kind.APP_OP,
+            subjectId = key.name,
+            before = AppAccessOperation.Value.AppOp(PkgOps.AppOpsValue.DEFAULT),
+            after = AppAccessOperation.Value.AppOp(PkgOps.AppOpsValue.IGNORE),
+            createdAt = java.time.Instant.EPOCH,
+        )
+        coEvery { history.get("op") } returns operation
+        coEvery { history.hasRevert("op") } returns false
+        coEvery { pkgOps.queryAppOps(installId, key) } returns PkgOps.AppOpsValue.ALLOW
+
+        controller.undo(installId, "op") shouldBe null
+
+        coVerify(exactly = 0) { pkgOps.setAppOps(any(), any(), any()) }
+        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any(), any()) }
+    }
+
 }
