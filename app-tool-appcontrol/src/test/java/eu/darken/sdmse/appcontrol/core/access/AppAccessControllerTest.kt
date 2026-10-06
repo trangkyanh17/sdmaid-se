@@ -13,9 +13,15 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.Test
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import testhelpers.TestApplication
 import testhelpers.BaseTest
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], application = TestApplication::class)
 class AppAccessControllerTest : BaseTest() {
 
     private val inspector = mockk<AppPermissionInspector>()
@@ -44,6 +50,7 @@ class AppAccessControllerTest : BaseTest() {
                 subjectId = permissionId,
                 before = AppAccessOperation.Value.Permission(false),
                 after = AppAccessOperation.Value.Permission(true),
+                revertOf = null,
             )
         } returns mockk()
 
@@ -58,6 +65,7 @@ class AppAccessControllerTest : BaseTest() {
                 subjectId = permissionId,
                 before = AppAccessOperation.Value.Permission(false),
                 after = AppAccessOperation.Value.Permission(true),
+                revertOf = null,
             )
         }
     }
@@ -75,7 +83,7 @@ class AppAccessControllerTest : BaseTest() {
         )
         coEvery { inspector.inspect(installId) } returnsMany listOf(before, after)
         coEvery { pkgOps.revokePermission(installId, permissionId) } returns true
-        coEvery { history.record(any(), any(), any(), any(), any()) } returns mockk()
+        coEvery { history.record(any(), any(), any(), any(), any(), any()) } returns mockk()
 
         controller.revokeRuntimePermission(installId, permissionId) shouldBe
             AppAccessController.PermissionMutationResult(after)
@@ -88,6 +96,7 @@ class AppAccessControllerTest : BaseTest() {
                 subjectId = permissionId,
                 before = AppAccessOperation.Value.Permission(true),
                 after = AppAccessOperation.Value.Permission(false),
+                revertOf = null,
             )
         }
     }
@@ -104,7 +113,7 @@ class AppAccessControllerTest : BaseTest() {
 
         coVerify(exactly = 0) { pkgOps.revokePermission(any(), any<String>()) }
         coVerify(exactly = 0) { pkgOps.grantPermission(any(), any<String>()) }
-        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -117,7 +126,7 @@ class AppAccessControllerTest : BaseTest() {
         controller.grantRuntimePermission(installId, "android.permission.CAMERA") shouldBe null
 
         coVerify(exactly = 0) { pkgOps.grantPermission(any(), any<String>()) }
-        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -135,7 +144,7 @@ class AppAccessControllerTest : BaseTest() {
             controller.grantRuntimePermission(installId, permissionId)
         }
 
-        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -152,7 +161,7 @@ class AppAccessControllerTest : BaseTest() {
         )
         coEvery { inspector.inspect(installId) } returnsMany listOf(before, after)
         coEvery { pkgOps.grantPermission(installId, permissionId) } returns true
-        coEvery { history.record(any(), any(), any(), any(), any()) } throws failure
+        coEvery { history.record(any(), any(), any(), any(), any(), any()) } throws failure
 
         controller.grantRuntimePermission(installId, permissionId) shouldBe
             AppAccessController.PermissionMutationResult(after, historyError = failure)
@@ -171,7 +180,7 @@ class AppAccessControllerTest : BaseTest() {
         )
         coEvery { inspector.inspect(installId) } returnsMany listOf(before, after)
         coEvery { pkgOps.grantPermission(installId, permissionId) } returns true
-        coEvery { history.record(any(), any(), any(), any(), any()) } throws CancellationException("cancel")
+        coEvery { history.record(any(), any(), any(), any(), any(), any()) } throws CancellationException("cancel")
 
         shouldThrow<CancellationException> {
             controller.grantRuntimePermission(installId, permissionId)
@@ -190,7 +199,7 @@ class AppAccessControllerTest : BaseTest() {
             }
         }
         coEvery { pkgOps.setAppOps(installId, key, value) } returns true
-        coEvery { history.record(any(), any(), any(), any(), any()) } returns mockk()
+        coEvery { history.record(any(), any(), any(), any(), any(), any()) } returns mockk()
 
         val result = controller.setAppOp(installId, key, value)
 
@@ -204,6 +213,7 @@ class AppAccessControllerTest : BaseTest() {
                 subjectId = key.name,
                 before = AppAccessOperation.Value.AppOp(PkgOps.AppOpsValue.DEFAULT),
                 after = AppAccessOperation.Value.AppOp(value),
+                revertOf = null,
             )
         }
     }
@@ -216,7 +226,7 @@ class AppAccessControllerTest : BaseTest() {
         controller.setAppOp(installId, key, PkgOps.AppOpsValue.DEFAULT) shouldBe null
 
         coVerify(exactly = 0) { pkgOps.setAppOps(any(), any(), any()) }
-        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { history.record(any(), any(), any(), any(), any(), any()) }
     }
     @Test
     fun `undo rejects operation from another android user`() = runTest {

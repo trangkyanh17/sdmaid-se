@@ -52,7 +52,24 @@ class AppAccessHistoryDatabase @Inject constructor(
         before: AppAccessOperation.Value,
         after: AppAccessOperation.Value,
         revertOf: String? = null,
-        createdAt: Instant = Instant.now(),
+    ): AppAccessOperation = recordAt(
+        installId = installId,
+        kind = kind,
+        subjectId = subjectId,
+        before = before,
+        after = after,
+        revertOf = revertOf,
+        createdAt = Instant.now(),
+    )
+
+    internal suspend fun recordAt(
+        installId: InstallId,
+        kind: AppAccessOperation.Kind,
+        subjectId: String,
+        before: AppAccessOperation.Value,
+        after: AppAccessOperation.Value,
+        revertOf: String?,
+        createdAt: Instant,
     ): AppAccessOperation {
         require(subjectId.isNotBlank()) { "subjectId must not be blank" }
 

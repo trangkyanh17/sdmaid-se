@@ -7,18 +7,24 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import testhelpers.TestApplication
 import testhelpers.BaseTest
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33], application = TestApplication::class)
 class AppAccessOperationDaoTest : BaseTest() {
 
     private lateinit var db: AppAccessHistoryRoomDb
     private lateinit var dao: AppAccessOperationDao
 
-    @BeforeEach
+    @Before
     fun setup() {
         db = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(),
@@ -27,7 +33,7 @@ class AppAccessOperationDaoTest : BaseTest() {
         dao = db.operations()
     }
 
-    @AfterEach
+    @After
     fun teardown() {
         db.close()
     }
@@ -51,7 +57,7 @@ class AppAccessOperationDaoTest : BaseTest() {
     )
 
     @Test
-    fun `history partitions exact package and user and sorts newest first`() = runTest {
+    fun `history partitions exact package and user and sorts newest first`() = runBlocking<Unit> {
         dao.insert(row(id = "a-old", createdAt = 1))
         dao.insert(row(id = "a-new", createdAt = 3))
         dao.insert(row(id = "other-user", userId = 10, createdAt = 4))
@@ -62,7 +68,7 @@ class AppAccessOperationDaoTest : BaseTest() {
     }
 
     @Test
-    fun `history limit is enforced by query`() = runTest {
+    fun `history limit is enforced by query`() = runBlocking<Unit> {
         dao.insert(row(id = "one", createdAt = 1))
         dao.insert(row(id = "two", createdAt = 2))
         dao.insert(row(id = "three", createdAt = 3))
@@ -72,7 +78,7 @@ class AppAccessOperationDaoTest : BaseTest() {
     }
 
     @Test
-    fun `only one undo row can reference an original operation`() = runTest {
+    fun `only one undo row can reference an original operation`() = runBlocking<Unit> {
         dao.insert(row(id = "original", createdAt = 1))
         dao.insert(row(id = "undo-1", createdAt = 2, revertOf = "original"))
 
@@ -84,7 +90,7 @@ class AppAccessOperationDaoTest : BaseTest() {
     }
 
     @Test
-    fun `retention removes strictly older rows`() = runTest {
+    fun `retention removes strictly older rows`() = runBlocking<Unit> {
         dao.insert(row(id = "expired", createdAt = 99))
         dao.insert(row(id = "boundary", createdAt = 100))
         dao.insert(row(id = "new", createdAt = 101))
@@ -95,7 +101,7 @@ class AppAccessOperationDaoTest : BaseTest() {
     }
 
     @Test
-    fun `global trim keeps newest rows`() = runTest {
+    fun `global trim keeps newest rows`() = runBlocking<Unit> {
         (1L..5L).forEach { n ->
             dao.insert(row(id = "row-$n", createdAt = n))
         }
@@ -107,7 +113,7 @@ class AppAccessOperationDaoTest : BaseTest() {
     }
 
     @Test
-    fun `orphaned undo rows are pruned after original disappears`() = runTest {
+    fun `orphaned undo rows are pruned after original disappears`() = runBlocking<Unit> {
         dao.insert(row(id = "original", createdAt = 1))
         dao.insert(row(id = "undo", createdAt = 2, revertOf = "original"))
 
