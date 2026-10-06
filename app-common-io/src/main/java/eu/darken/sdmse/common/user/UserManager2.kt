@@ -16,6 +16,7 @@ import eu.darken.sdmse.common.root.RootManager
 import eu.darken.sdmse.common.root.canUseRootNow
 import eu.darken.sdmse.common.shell.ShellOps
 import eu.darken.sdmse.common.shell.ipc.ShellOpsCmd
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,7 +32,6 @@ class UserManager2 @Inject constructor(
     suspend fun currentUser(): UserProfile2 = UserProfile2(
         handle = if (!hasMultiUserSupport) UserHandle2(handleId = 0) else Process.myUserHandle().toUserHandle2(),
         isCurrent = true,
-        isVisible = true,
     )
 
     suspend fun systemUser(): UserProfile2 = UserProfile2(
@@ -52,30 +52,49 @@ class UserManager2 @Inject constructor(
         log(TAG) { "allUsers(): shellMode=$shellMode" }
 
         if (shellMode != null) {
-            try {
-                val command = if (Build.VERSION.SDK_INT >= 33) "cmd user list -v" else "pm list users"
-                val shellResult = shellOps.execute(ShellOpsCmd(command), shellMode)
-                log(TAG) { "allUsers() result: $shellResult" }
-                if (!shellResult.isSuccess) throw IllegalStateException("allUsers() failed")
+            val commands = if (Build.VERSION.SDK_INT >= 33) {
+                listOf("cmd user list -v", "pm list users")
+            } else {
+                listOf("pm list users")
+            }
 
-                UserListParser.parse(shellResult.output)
-                    .map { parsed ->
-                        UserProfile2(
-                            handle = UserHandle2(parsed.id),
-                            label = parsed.name,
-                            code = parsed.code,
-                            isRunning = parsed.isRunning,
-                            type = parsed.type,
-                            rawType = parsed.rawType,
-                            flags = parsed.flags,
-                            isCurrent = parsed.isCurrent,
-                            isVisible = parsed.isVisible,
-                            isQuietMode = parsed.isQuietMode,
-                        )
+            for (command in commands) {
+                try {
+                    val shellResult = shellOps.execute(ShellOpsCmd(command), shellMode)
+                    log(TAG) { "allUsers($command) result: $shellResult" }
+                    if (!shellResult.isSuccess) {
+                        log(TAG, ERROR) { "allUsers($command): command failed" }
+                        continue
                     }
-                    .run { profiles.addAll(this) }
-            } catch (e: Exception) {
-                log(TAG, ERROR) { "allUsers(): Lookup failed ${e.asLog()}" }
+
+                    val parsedUsers = UserListParser.parse(shellResult.output)
+                    if (parsedUsers.isEmpty()) {
+                        log(TAG, ERROR) { "allUsers($command): no parseable users" }
+                        continue
+                    }
+
+                    parsedUsers
+                        .map { parsed ->
+                            UserProfile2(
+                                handle = UserHandle2(parsed.id),
+                                label = parsed.name,
+                                code = parsed.code,
+                                isRunning = parsed.isRunning,
+                                type = parsed.type,
+                                rawType = parsed.rawType,
+                                flags = parsed.flags,
+                                isCurrent = parsed.isCurrent,
+                                isVisible = parsed.isVisible,
+                                isQuietMode = parsed.isQuietMode,
+                            )
+                        }
+                        .run { profiles.addAll(this) }
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    log(TAG, ERROR) { "allUsers($command): lookup failed ${e.asLog()}" }
+                }
             }
         }
 
@@ -91,7 +110,7 @@ class UserManager2 @Inject constructor(
             profiles.add(current)
         } else if (!existing.isCurrent) {
             profiles.remove(existing)
-            profiles.add(existing.copy(isCurrent = true, isVisible = existing.isVisible || current.isVisible))
+            profiles.add(existing.copy(isCurrent = true))
         }
 
         return profiles
