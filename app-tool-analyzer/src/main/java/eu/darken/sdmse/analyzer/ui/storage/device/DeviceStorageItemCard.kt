@@ -37,6 +37,7 @@ import eu.darken.sdmse.common.ByteFormatter
 import eu.darken.sdmse.common.compose.preview.Preview2
 import eu.darken.sdmse.common.compose.preview.PreviewWrapper
 import eu.darken.sdmse.stats.core.db.SpaceSnapshotEntity
+import eu.darken.sdmse.stats.core.forecast.StorageForecast
 import eu.darken.sdmse.stats.core.forecast.StorageTrendCalculator
 import java.time.Duration
 import java.time.Instant
@@ -173,9 +174,10 @@ internal fun DeviceStorageItemCard(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TrendDeltaText(
+                    StorageInsightText(
                         modifier = Modifier.weight(1f),
                         snapshots = row.snapshots,
+                        forecast = row.forecast,
                     )
                     TextButton(onClick = onTrendClick) {
                         if (!row.isPro) {
@@ -197,6 +199,33 @@ internal fun DeviceStorageItemCard(
             }
         }
     }
+}
+
+@Composable
+private fun StorageInsightText(
+    modifier: Modifier = Modifier,
+    snapshots: List<SpaceSnapshotEntity>,
+    forecast: StorageForecast?,
+) {
+    if (forecast is StorageForecast.Filling) {
+        val days = forecast.daysUntilFloor.toInt()
+        Text(
+            text = pluralStringResource(R.plurals.analyzer_storage_forecast_days, days, days),
+            style = MaterialTheme.typography.labelSmall,
+            color = if (forecast.isUrgent) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = modifier,
+        )
+        return
+    }
+
+    TrendDeltaText(
+        modifier = modifier,
+        snapshots = snapshots,
+    )
 }
 
 @Composable

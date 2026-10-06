@@ -16,8 +16,12 @@ import eu.darken.sdmse.common.progress.Progress
 import eu.darken.sdmse.common.uix.ViewModel4
 import eu.darken.sdmse.common.upgrade.UpgradeRepo
 import eu.darken.sdmse.setup.SetupRoute
+import eu.darken.sdmse.stats.core.LowStorage
 import eu.darken.sdmse.stats.core.SpaceHistoryRepo
+import eu.darken.sdmse.stats.core.SpaceTracker
 import eu.darken.sdmse.stats.core.db.SpaceSnapshotEntity
+import eu.darken.sdmse.stats.core.forecast.StorageForecast
+import eu.darken.sdmse.stats.core.forecast.StorageForecaster
 import eu.darken.sdmse.stats.ui.SpaceHistoryRoute
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -57,16 +61,23 @@ class DeviceStorageViewModel @Inject constructor(
             spaceHistoryRepo.getAllHistory(Instant.now() - Duration.ofDays(7))
         },
         upgradeRepo.upgradeInfo.map { it.isPro },
+        analyzerSettings.lowStorageThresholdBytes.flow,
         analyzerSettings.hintLowSpaceDismissed.flow,
-    ) { data, snapshots, isPro, hintDismissed ->
+    ) { data, snapshots, isPro, customThreshold, hintDismissed ->
         val snapshotsByStorage = snapshots.groupBy { it.storageId }
         State(
             storages = data.storages.map { storage ->
+                val storageSnapshots = snapshotsByStorage[storage.id.externalId.toString()]
+                    .orEmpty()
+                    .sortedBy { it.recordedAt }
                 Row(
                     storage = storage,
-                    snapshots = snapshotsByStorage[storage.id.externalId.toString()]
-                        .orEmpty()
-                        .sortedBy { it.recordedAt },
+                    snapshots = storageSnapshots,
+                    forecast = forecastFor(
+                        storage = storage,
+                        snapshots = storageSnapshots,
+                        customThresholdBytes = customThreshold,
+                    ),
                     isPro = isPro,
                 )
             },
@@ -107,6 +118,7 @@ class DeviceStorageViewModel @Inject constructor(
     data class Row(
         val storage: DeviceStorage,
         val snapshots: List<SpaceSnapshotEntity> = emptyList(),
+        val forecast: StorageForecast? = null,
         val isPro: Boolean = false,
     )
 
@@ -129,6 +141,28 @@ class DeviceStorageViewModel @Inject constructor(
     )
 
     companion object {
+        internal fun forecastFor(
+            storage: DeviceStorage,
+            snapshots: List<SpaceSnapshotEntity>,
+            customThresholdBytes: Long?,
+        ): StorageForecast {
+            val storageId = storage.id.externalId.toString()
+            val history = snapshots.filter { it.storageId == storageId }
+            val current = SpaceTracker.StorageSnapshot(
+                storageId = storageId,
+                spaceFree = storage.spaceFree,
+                spaceCapacity = storage.spaceCapacity,
+            )
+            return StorageForecaster.forecast(
+                history = history,
+                current = current,
+                lowStorageThresholdBytes = LowStorage.resolveThreshold(
+                    capacityBytes = storage.spaceCapacity,
+                    customThresholdBytes = customThresholdBytes,
+                ),
+            )
+        }
+
         private val TAG = logTag("Analyzer", "Storage", "ViewModel")
     }
 }
