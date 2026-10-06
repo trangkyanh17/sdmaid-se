@@ -41,6 +41,10 @@ android {
 
 setupKotlinOptions(compose = true)
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:${Versions.Desugar.core}")
     implementation(project(":app-common"))
@@ -61,9 +65,11 @@ dependencies {
     addDI()
     addCoroutines()
     addSerialization()
+    addRoomDb()
 
     addTesting()
     testImplementation(project(":app-common-test"))
+    testImplementation("androidx.room:room-testing:2.8.4")
 
     addScreenshotTest()
 }
