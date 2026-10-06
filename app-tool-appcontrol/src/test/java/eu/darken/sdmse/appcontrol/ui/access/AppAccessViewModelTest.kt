@@ -207,7 +207,8 @@ class AppAccessViewModelTest : BaseTest() {
         val controller = mockk<AppAccessController>()
         coEvery { controller.queryAppOps(id) } returns emptyList()
         coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
-        coEvery { controller.grantRuntimePermission(id, permissionId) } returns true
+        coEvery { controller.grantRuntimePermission(id, permissionId) } returns
+            AppAccessController.PermissionMutationResult(after)
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
 
         vm.bindRoute(AppAccessRoute(id))
@@ -218,7 +219,7 @@ class AppAccessViewModelTest : BaseTest() {
 
         vm.state.value shouldBe AppAccessViewModel.State.Ready(after)
         coVerify(exactly = 1) { controller.grantRuntimePermission(id, permissionId) }
-        coVerify(exactly = 2) { inspector.inspect(id) }
+        coVerify(exactly = 1) { inspector.inspect(id) }
     }
 
     @Test
@@ -237,7 +238,8 @@ class AppAccessViewModelTest : BaseTest() {
         val controller = mockk<AppAccessController>()
         coEvery { controller.queryAppOps(id) } returns emptyList()
         coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
-        coEvery { controller.revokeRuntimePermission(id, permissionId) } returns true
+        coEvery { controller.revokeRuntimePermission(id, permissionId) } returns
+            AppAccessController.PermissionMutationResult(after)
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
 
         vm.bindRoute(AppAccessRoute(id))
@@ -248,7 +250,7 @@ class AppAccessViewModelTest : BaseTest() {
 
         vm.state.value shouldBe AppAccessViewModel.State.Ready(after)
         coVerify(exactly = 1) { controller.revokeRuntimePermission(id, permissionId) }
-        coVerify(exactly = 2) { inspector.inspect(id) }
+        coVerify(exactly = 1) { inspector.inspect(id) }
     }
     @Test
     fun `binding also loads appops for exact target`() = runTest2 {
@@ -306,14 +308,14 @@ class AppAccessViewModelTest : BaseTest() {
         val inspector = mockk<AppPermissionInspector>()
         val controller = mockk<AppAccessController>()
         coEvery { inspector.inspect(id) } returns permissionSnapshot
-        coEvery { controller.queryAppOps(id) } returnsMany listOf(before, after)
+        coEvery { controller.queryAppOps(id) } returns before
         coEvery {
             controller.setAppOp(
                 id,
                 PkgOps.AppOpsKey.GET_USAGE_STATS,
                 PkgOps.AppOpsValue.IGNORE,
             )
-        } returns true
+        } returns AppAccessController.AppOpMutationResult(after)
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
 
         vm.bindRoute(AppAccessRoute(id))
@@ -333,7 +335,7 @@ class AppAccessViewModelTest : BaseTest() {
                 PkgOps.AppOpsValue.IGNORE,
             )
         }
-        coVerify(exactly = 2) { controller.queryAppOps(id) }
+        coVerify(exactly = 1) { controller.queryAppOps(id) }
     }
     @Test
     fun `pending permission confirmation blocks appops selector`() = runTest2 {

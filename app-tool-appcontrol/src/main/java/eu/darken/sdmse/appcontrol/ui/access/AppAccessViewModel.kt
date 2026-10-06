@@ -90,7 +90,7 @@ class AppAccessViewModel @Inject constructor(
 
         launch {
             try {
-                val changed = when (mutation.action) {
+                val result = when (mutation.action) {
                     PermissionAction.GRANT -> controller.grantRuntimePermission(
                         installId,
                         mutation.permissionId,
@@ -100,14 +100,12 @@ class AppAccessViewModel @Inject constructor(
                         installId,
                         mutation.permissionId,
                     )
-                }
-                if (!changed) {
-                    throw IllegalStateException(
-                        "Permission mutation rejected for ${mutation.permissionId}"
-                    )
-                }
+                } ?: throw IllegalStateException(
+                    "Permission mutation rejected for ${mutation.permissionId}"
+                )
 
-                statePub.value = loadAccessState(installId)
+                statePub.value = loadAccessState(result.snapshot)
+                result.historyError?.let { errorEvents.emit(it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -166,24 +164,21 @@ class AppAccessViewModel @Inject constructor(
 
         launch {
             try {
-                val changed = controller.setAppOp(
+                val result = controller.setAppOp(
                     installId = installId,
                     key = mutation.key,
                     value = value,
+                ) ?: throw IllegalStateException(
+                    "AppOps mutation rejected for ${mutation.key} -> $value"
                 )
-                if (!changed) {
-                    throw IllegalStateException(
-                        "AppOps mutation rejected for ${mutation.key} -> $value"
-                    )
-                }
 
-                val actual = controller.queryAppOps(installId)
                 statePub.value = ready.copy(
-                    appOps = actual,
+                    appOps = result.appOps,
                     appOpsError = null,
                     pendingAppOpMutation = null,
                     mutatingAppOpKey = null,
                 )
+                result.historyError?.let { errorEvents.emit(it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -199,7 +194,11 @@ class AppAccessViewModel @Inject constructor(
 
     private suspend fun loadAccessState(installId: eu.darken.sdmse.common.pkgs.features.InstallId): State {
         val snapshot = inspector.inspect(installId) ?: return State.NotFound
+        return loadAccessState(snapshot)
+    }
 
+    private suspend fun loadAccessState(snapshot: AppPermissionSnapshot): State {
+        val installId = snapshot.installId
         return try {
             State.Ready(
                 snapshot = snapshot,
