@@ -1,6 +1,7 @@
 package eu.darken.sdmse.common.user
 
 import android.content.Context
+import android.os.Build
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
@@ -29,16 +30,15 @@ class UserManager2 @Inject constructor(
 
     suspend fun currentUser(): UserProfile2 = UserProfile2(
         handle = if (!hasMultiUserSupport) UserHandle2(handleId = 0) else Process.myUserHandle().toUserHandle2(),
+        isCurrent = true,
+        isVisible = true,
     )
 
     suspend fun systemUser(): UserProfile2 = UserProfile2(
         handle = UserHandle2(handleId = -1),
         isRunning = true,
+        type = UserProfile2.Type.SYSTEM,
     )
-
-    private val userListRegex by lazy {
-        Regex("^\\s+UserInfo.+?(\\d+):(.+):([a-z0-9]+).+?(\\w+)*\$")
-    }
 
     suspend fun allUsers(): Set<UserProfile2> {
         val profiles = mutableSetOf<UserProfile2>()
@@ -53,24 +53,25 @@ class UserManager2 @Inject constructor(
 
         if (shellMode != null) {
             try {
-                val shellResult = shellOps.execute(ShellOpsCmd("pm list users"), shellMode)
-                log(TAG) { "allUser() result: $shellResult" }
-                if (!shellResult.isSuccess) throw IllegalStateException("allUser() failed: ")
+                val command = if (Build.VERSION.SDK_INT >= 33) "cmd user list -v" else "pm list users"
+                val shellResult = shellOps.execute(ShellOpsCmd(command), shellMode)
+                log(TAG) { "allUsers() result: $shellResult" }
+                if (!shellResult.isSuccess) throw IllegalStateException("allUsers() failed")
 
-                shellResult.output
-                    .mapNotNull { userListRegex.matchEntire(it) }
-                    .mapNotNull { match ->
-                        try {
-                            UserProfile2(
-                                handle = UserHandle2(match.groupValues[1].toInt()),
-                                label = match.groupValues[2]?.takeIf { it != "null" },
-                                code = match.groupValues[3],
-                                isRunning = match.groupValues[4] == "running",
-                            )
-                        } catch (e: Exception) {
-                            log(TAG, ERROR) { "UserProfile parsing failed for $shellResult: ${e.asLog()}" }
-                            null
-                        }
+                UserListParser.parse(shellResult.output)
+                    .map { parsed ->
+                        UserProfile2(
+                            handle = UserHandle2(parsed.id),
+                            label = parsed.name,
+                            code = parsed.code,
+                            isRunning = parsed.isRunning,
+                            type = parsed.type,
+                            rawType = parsed.rawType,
+                            flags = parsed.flags,
+                            isCurrent = parsed.isCurrent,
+                            isVisible = parsed.isVisible,
+                            isQuietMode = parsed.isQuietMode,
+                        )
                     }
                     .run { profiles.addAll(this) }
             } catch (e: Exception) {
@@ -84,8 +85,13 @@ class UserManager2 @Inject constructor(
                 .run { profiles.addAll(this) }
         }
 
-        if (profiles.none { it.handle == currentUser().handle }) {
-            profiles.add(currentUser())
+        val current = currentUser()
+        val existing = profiles.firstOrNull { it.handle == current.handle }
+        if (existing == null) {
+            profiles.add(current)
+        } else if (!existing.isCurrent) {
+            profiles.remove(existing)
+            profiles.add(existing.copy(isCurrent = true, isVisible = existing.isVisible || current.isVisible))
         }
 
         return profiles
@@ -116,8 +122,6 @@ class UserManager2 @Inject constructor(
     suspend fun getHandleForId(rawId: Int) = UserHandle2(handleId = rawId)
 
     companion object {
-
         internal val TAG = logTag("UserManager2")
     }
-
 }
