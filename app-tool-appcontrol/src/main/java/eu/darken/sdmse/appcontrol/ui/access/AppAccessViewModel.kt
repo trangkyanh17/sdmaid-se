@@ -109,11 +109,7 @@ class AppAccessViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                statePub.value = ready.copy(
-                    pendingMutation = null,
-                    mutatingPermissionId = null,
-                )
-                errorEvents.emit(e)
+                statePub.value = recoverAfterMutationFailure(installId, e)
             }
         }
     }
@@ -182,13 +178,23 @@ class AppAccessViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
-                statePub.value = ready.copy(
-                    appOpsError = e,
-                    pendingAppOpMutation = null,
-                    mutatingAppOpKey = null,
-                )
-                errorEvents.emit(e)
+                statePub.value = recoverAfterMutationFailure(installId, e)
             }
+        }
+    }
+
+    private suspend fun recoverAfterMutationFailure(
+        installId: eu.darken.sdmse.common.pkgs.features.InstallId,
+        failure: Throwable,
+    ): State {
+        errorEvents.emit(failure)
+        return try {
+            loadAccessState(installId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (refreshFailure: Throwable) {
+            errorEvents.emit(refreshFailure)
+            State.Error(refreshFailure)
         }
     }
 
