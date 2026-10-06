@@ -152,4 +152,16 @@
     <string name="appcontrol_archive_unavailable_body">The Archive button in this app\'s system settings is disabled, so Android won\'t archive it.</string>
     <string name="appcontrol_restore_unavailable_title">Can\'t restore this app</string>
     <string name="appcontrol_restore_unavailable_body">The Restore button in this app\'s system settings is disabled, so Android won\'t restore it right now.</string>
+
+    <string name="appcontrol_history_title">Recent access changes</string>
+    <string name="appcontrol_history_empty">No access changes recorded yet.</string>
+    <string name="appcontrol_history_unavailable">Access history is unavailable.</string>
+    <string name="appcontrol_history_permission">Runtime permission</string>
+    <string name="appcontrol_history_appop">AppOps</string>
+    <string name="appcontrol_history_reverted">Reverted</string>
+    <string name="appcontrol_history_undo">Undo</string>
+    <string name="appcontrol_history_undoing">Undoing…</string>
+    <string name="appcontrol_history_undo_entry">Undo · %1$s</string>
+    <string name="appcontrol_history_undo_title">Undo access change?</string>
+    <string name="appcontrol_history_undo_message">Restore %1$s to its previous value (%2$s)? The change is only applied if the current device state still matches this history entry.</string>
 </resources>

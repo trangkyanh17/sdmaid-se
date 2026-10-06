@@ -206,6 +206,7 @@ class AppAccessViewModelTest : BaseTest() {
         val inspector = mockk<AppPermissionInspector>()
         val controller = mockk<AppAccessController>()
         coEvery { controller.queryAppOps(id) } returns emptyList()
+        coEvery { controller.recentHistory(id) } returns emptyList()
         coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
         coEvery { controller.grantRuntimePermission(id, permissionId) } returns
             AppAccessController.PermissionMutationResult(after)
@@ -237,6 +238,7 @@ class AppAccessViewModelTest : BaseTest() {
         val inspector = mockk<AppPermissionInspector>()
         val controller = mockk<AppAccessController>()
         coEvery { controller.queryAppOps(id) } returns emptyList()
+        coEvery { controller.recentHistory(id) } returns emptyList()
         coEvery { inspector.inspect(id) } returnsMany listOf(before, after)
         coEvery { controller.revokeRuntimePermission(id, permissionId) } returns
             AppAccessController.PermissionMutationResult(after)
@@ -263,6 +265,7 @@ class AppAccessViewModelTest : BaseTest() {
         val controller = mockk<AppAccessController>()
         coEvery { inspector.inspect(id) } returns permissionSnapshot
         coEvery { controller.queryAppOps(id) } returns appOps
+        coEvery { controller.recentHistory(id) } returns emptyList()
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
 
         vm.bindRoute(AppAccessRoute(id))
@@ -284,6 +287,7 @@ class AppAccessViewModelTest : BaseTest() {
         val controller = mockk<AppAccessController>()
         coEvery { inspector.inspect(id) } returns permissionSnapshot
         coEvery { controller.queryAppOps(id) } throws failure
+        coEvery { controller.recentHistory(id) } returns emptyList()
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
 
         vm.bindRoute(AppAccessRoute(id))
@@ -309,6 +313,7 @@ class AppAccessViewModelTest : BaseTest() {
         val controller = mockk<AppAccessController>()
         coEvery { inspector.inspect(id) } returns permissionSnapshot
         coEvery { controller.queryAppOps(id) } returns before
+        coEvery { controller.recentHistory(id) } returnsMany listOf(emptyList(), emptyList())
         coEvery {
             controller.setAppOp(
                 id,
@@ -352,6 +357,7 @@ class AppAccessViewModelTest : BaseTest() {
         val controller = mockk<AppAccessController>()
         coEvery { inspector.inspect(id) } returns permissionSnapshot
         coEvery { controller.queryAppOps(id) } returns appOps
+        coEvery { controller.recentHistory(id) } returns emptyList()
         val vm = AppAccessViewModel(TestDispatcherProvider(), inspector, controller)
 
         vm.bindRoute(AppAccessRoute(id))
@@ -368,4 +374,78 @@ class AppAccessViewModelTest : BaseTest() {
             appOps = appOps,
         )
     }
+    @Test
+    fun `history item is undoable only when current state still matches recorded after state`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.CAMERA"
+        val snapshot = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = true, runtimeMutable = true)),
+        )
+        val operation = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation(
+            id = "op",
+            packageName = id.pkgId.name,
+            userId = id.userHandle.handleId,
+            kind = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Kind.RUNTIME_PERMISSION,
+            subjectId = permissionId,
+            before = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Value.Permission(false),
+            after = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Value.Permission(true),
+            createdAt = java.time.Instant.EPOCH,
+        )
+
+        AppAccessViewModel.buildHistoryItems(
+            snapshot = snapshot,
+            appOps = emptyList(),
+            operations = listOf(operation),
+        ).single().undoAvailable shouldBe true
+
+        AppAccessViewModel.buildHistoryItems(
+            snapshot = snapshot.copy(
+                permissions = listOf(
+                    AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)
+                )
+            ),
+            appOps = emptyList(),
+            operations = listOf(operation),
+        ).single().undoAvailable shouldBe false
+    }
+
+    @Test
+    fun `compensating entry marks original as reverted and neither row can undo again`() = runTest2 {
+        val id = installId("com.example.app", userId = 10)
+        val permissionId = "android.permission.CAMERA"
+        val snapshot = AppPermissionSnapshot(
+            id,
+            listOf(AppPermissionSnapshot.Entry(permissionId, granted = false, runtimeMutable = true)),
+        )
+        val original = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation(
+            id = "original",
+            packageName = id.pkgId.name,
+            userId = id.userHandle.handleId,
+            kind = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Kind.RUNTIME_PERMISSION,
+            subjectId = permissionId,
+            before = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Value.Permission(false),
+            after = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Value.Permission(true),
+            createdAt = java.time.Instant.EPOCH,
+        )
+        val undo = original.copy(
+            id = "undo",
+            before = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Value.Permission(true),
+            after = eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation.Value.Permission(false),
+            revertOf = "original",
+        )
+
+        val items = AppAccessViewModel.buildHistoryItems(
+            snapshot = snapshot,
+            appOps = emptyList(),
+            operations = listOf(undo, original),
+        )
+
+        items.single { it.operation.id == "original" }.apply {
+            reverted shouldBe true
+            undoAvailable shouldBe false
+        }
+        items.single { it.operation.id == "undo" }.undoAvailable shouldBe false
+    }
+
 }

@@ -6,6 +6,7 @@ import eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation
 import eu.darken.sdmse.common.pkgs.features.InstallId
 import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 class AppAccessController @Inject constructor(
@@ -48,6 +49,9 @@ class AppAccessController @Inject constructor(
 
     suspend fun queryAppOps(installId: InstallId): List<AppOpEntry> =
         AppOpsInspector.inspect(pkgOps, installId)
+
+    suspend fun recentHistory(installId: InstallId): List<AppAccessOperation> =
+        history.history(installId).first()
 
     suspend fun setAppOp(
         installId: InstallId,

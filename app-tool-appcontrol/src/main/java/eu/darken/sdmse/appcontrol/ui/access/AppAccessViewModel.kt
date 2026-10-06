@@ -5,6 +5,7 @@ import eu.darken.sdmse.appcontrol.core.access.AppAccessController
 import eu.darken.sdmse.appcontrol.core.access.AppOpEntry
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionInspector
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
+import eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.common.coroutine.DispatcherProvider
 import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
@@ -44,32 +45,20 @@ class AppAccessViewModel @Inject constructor(
 
     fun requestPermissionMutation(permissionId: String) {
         val ready = statePub.value as? State.Ready ?: return
-        if (
-            ready.mutatingPermissionId != null ||
-            ready.mutatingAppOpKey != null ||
-            ready.pendingMutation != null ||
-            ready.pendingAppOpMutation != null
-        ) return
+        if (ready.hasPendingOrActiveMutation()) return
 
         val permission = ready.snapshot.permissions.singleOrNull { it.name == permissionId } ?: return
         if (!permission.runtimeMutable) return
 
-        val action = if (permission.granted) {
-            PermissionAction.REVOKE
-        } else {
-            PermissionAction.GRANT
-        }
+        val action = if (permission.granted) PermissionAction.REVOKE else PermissionAction.GRANT
         statePub.value = ready.copy(
-            pendingMutation = PermissionMutation(
-                permissionId = permissionId,
-                action = action,
-            ),
+            pendingMutation = PermissionMutation(permissionId = permissionId, action = action),
         )
     }
 
     fun dismissPermissionMutation() {
         val ready = statePub.value as? State.Ready ?: return
-        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+        if (ready.hasActiveMutation()) return
         statePub.value = ready.copy(pendingMutation = null)
     }
 
@@ -79,7 +68,9 @@ class AppAccessViewModel @Inject constructor(
         if (
             ready.mutatingPermissionId != null ||
             ready.mutatingAppOpKey != null ||
-            ready.pendingAppOpMutation != null
+            ready.undoingOperationId != null ||
+            ready.pendingAppOpMutation != null ||
+            ready.pendingUndoOperationId != null
         ) return
 
         val installId = ready.snapshot.installId
@@ -116,25 +107,17 @@ class AppAccessViewModel @Inject constructor(
 
     fun requestAppOpMutation(key: PkgOps.AppOpsKey) {
         val ready = statePub.value as? State.Ready ?: return
-        if (
-            ready.mutatingPermissionId != null ||
-            ready.mutatingAppOpKey != null ||
-            ready.pendingMutation != null ||
-            ready.pendingAppOpMutation != null
-        ) return
+        if (ready.hasPendingOrActiveMutation()) return
 
         val entry = ready.appOps.singleOrNull { it.key == key } ?: return
         statePub.value = ready.copy(
-            pendingAppOpMutation = AppOpMutation(
-                key = key,
-                currentValue = entry.value,
-            ),
+            pendingAppOpMutation = AppOpMutation(key = key, currentValue = entry.value),
         )
     }
 
     fun dismissAppOpMutation() {
         val ready = statePub.value as? State.Ready ?: return
-        if (ready.mutatingPermissionId != null || ready.mutatingAppOpKey != null) return
+        if (ready.hasActiveMutation()) return
         statePub.value = ready.copy(pendingAppOpMutation = null)
     }
 
@@ -144,7 +127,9 @@ class AppAccessViewModel @Inject constructor(
         if (
             ready.mutatingPermissionId != null ||
             ready.mutatingAppOpKey != null ||
-            ready.pendingMutation != null
+            ready.undoingOperationId != null ||
+            ready.pendingMutation != null ||
+            ready.pendingUndoOperationId != null
         ) return
 
         if (value == mutation.currentValue) {
@@ -168,12 +153,58 @@ class AppAccessViewModel @Inject constructor(
                     "AppOps mutation rejected for ${mutation.key} -> $value"
                 )
 
-                statePub.value = ready.copy(
-                    appOps = result.appOps,
-                    appOpsError = null,
-                    pendingAppOpMutation = null,
-                    mutatingAppOpKey = null,
+                statePub.value = loadAccessState(
+                    snapshot = ready.snapshot,
+                    knownAppOps = result.appOps,
                 )
+                result.historyError?.let { errorEvents.emit(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                statePub.value = recoverAfterMutationFailure(installId, e)
+            }
+        }
+    }
+
+    fun requestUndo(operationId: String) {
+        val ready = statePub.value as? State.Ready ?: return
+        if (ready.hasPendingOrActiveMutation()) return
+
+        val item = ready.history.singleOrNull { it.operation.id == operationId } ?: return
+        if (!item.undoAvailable) return
+
+        statePub.value = ready.copy(pendingUndoOperationId = operationId)
+    }
+
+    fun dismissUndo() {
+        val ready = statePub.value as? State.Ready ?: return
+        if (ready.hasActiveMutation()) return
+        statePub.value = ready.copy(pendingUndoOperationId = null)
+    }
+
+    fun confirmUndo() {
+        val ready = statePub.value as? State.Ready ?: return
+        val operationId = ready.pendingUndoOperationId ?: return
+        if (
+            ready.mutatingPermissionId != null ||
+            ready.mutatingAppOpKey != null ||
+            ready.undoingOperationId != null ||
+            ready.pendingMutation != null ||
+            ready.pendingAppOpMutation != null
+        ) return
+
+        val installId = ready.snapshot.installId
+        statePub.value = ready.copy(
+            pendingUndoOperationId = null,
+            undoingOperationId = operationId,
+        )
+
+        launch {
+            try {
+                val result = controller.undo(installId, operationId)
+                    ?: throw IllegalStateException("Undo rejected for operation $operationId")
+
+                statePub.value = loadAccessState(installId)
                 result.historyError?.let { errorEvents.emit(it) }
             } catch (e: CancellationException) {
                 throw e
@@ -198,28 +229,62 @@ class AppAccessViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadAccessState(installId: eu.darken.sdmse.common.pkgs.features.InstallId): State {
+    private suspend fun loadAccessState(
+        installId: eu.darken.sdmse.common.pkgs.features.InstallId,
+    ): State {
         val snapshot = inspector.inspect(installId) ?: return State.NotFound
         return loadAccessState(snapshot)
     }
 
-    private suspend fun loadAccessState(snapshot: AppPermissionSnapshot): State {
+    private suspend fun loadAccessState(
+        snapshot: AppPermissionSnapshot,
+        knownAppOps: List<AppOpEntry>? = null,
+    ): State {
         val installId = snapshot.installId
-        return try {
-            State.Ready(
-                snapshot = snapshot,
-                appOps = controller.queryAppOps(installId),
-            )
+
+        var appOps = knownAppOps ?: emptyList()
+        var appOpsError: Throwable? = null
+        if (knownAppOps == null) {
+            try {
+                appOps = controller.queryAppOps(installId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                appOpsError = e
+                errorEvents.emit(e)
+            }
+        }
+
+        var operations = emptyList<AppAccessOperation>()
+        var historyError: Throwable? = null
+        try {
+            operations = controller.recentHistory(installId)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
+            historyError = e
             errorEvents.emit(e)
-            State.Ready(
-                snapshot = snapshot,
-                appOpsError = e,
-            )
         }
+
+        return State.Ready(
+            snapshot = snapshot,
+            appOps = appOps,
+            appOpsError = appOpsError,
+            history = buildHistoryItems(snapshot, appOps, operations),
+            historyError = historyError,
+        )
     }
+
+    private fun State.Ready.hasActiveMutation(): Boolean =
+        mutatingPermissionId != null ||
+            mutatingAppOpKey != null ||
+            undoingOperationId != null
+
+    private fun State.Ready.hasPendingOrActiveMutation(): Boolean =
+        hasActiveMutation() ||
+            pendingMutation != null ||
+            pendingAppOpMutation != null ||
+            pendingUndoOperationId != null
 
     data class PermissionMutation(
         val permissionId: String,
@@ -229,6 +294,12 @@ class AppAccessViewModel @Inject constructor(
     data class AppOpMutation(
         val key: PkgOps.AppOpsKey,
         val currentValue: PkgOps.AppOpsValue,
+    )
+
+    data class HistoryItem(
+        val operation: AppAccessOperation,
+        val undoAvailable: Boolean,
+        val reverted: Boolean,
     )
 
     enum class PermissionAction {
@@ -246,6 +317,10 @@ class AppAccessViewModel @Inject constructor(
             val appOpsError: Throwable? = null,
             val pendingAppOpMutation: AppOpMutation? = null,
             val mutatingAppOpKey: PkgOps.AppOpsKey? = null,
+            val history: List<HistoryItem> = emptyList(),
+            val historyError: Throwable? = null,
+            val pendingUndoOperationId: String? = null,
+            val undoingOperationId: String? = null,
         ) : State
         data class Error(val cause: Throwable) : State
         data object NotFound : State
@@ -253,5 +328,55 @@ class AppAccessViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "AppControl:Access"
+
+        internal fun buildHistoryItems(
+            snapshot: AppPermissionSnapshot,
+            appOps: List<AppOpEntry>,
+            operations: List<AppAccessOperation>,
+        ): List<HistoryItem> {
+            val revertedIds = operations.mapNotNull { it.revertOf }.toSet()
+            val installId = snapshot.installId
+
+            return operations.map { operation ->
+                val reverted = operation.id in revertedIds
+                val sameTarget =
+                    operation.packageName == installId.pkgId.name &&
+                        operation.userId == installId.userHandle.handleId
+                val structurallyUndoable =
+                    sameTarget &&
+                        operation.revertOf == null &&
+                        !reverted &&
+                        operation.before != operation.after
+
+                val stateMatchesAfter = if (!structurallyUndoable) {
+                    false
+                } else {
+                    when (operation.kind) {
+                        AppAccessOperation.Kind.RUNTIME_PERMISSION -> {
+                            val after = operation.after as? AppAccessOperation.Value.Permission
+                            val current = snapshot.permissions
+                                .singleOrNull { it.name == operation.subjectId }
+                                ?.takeIf { it.runtimeMutable }
+                            after != null && current?.granted == after.granted
+                        }
+
+                        AppAccessOperation.Kind.APP_OP -> {
+                            val key = PkgOps.AppOpsKey.entries
+                                .singleOrNull { it.name == operation.subjectId }
+                            val after = operation.after as? AppAccessOperation.Value.AppOp
+                            key != null &&
+                                after != null &&
+                                appOps.singleOrNull { it.key == key }?.value == after.value
+                        }
+                    }
+                }
+
+                HistoryItem(
+                    operation = operation,
+                    undoAvailable = structurallyUndoable && stateMatchesAfter,
+                    reverted = reverted,
+                )
+            }
+        }
     }
 }

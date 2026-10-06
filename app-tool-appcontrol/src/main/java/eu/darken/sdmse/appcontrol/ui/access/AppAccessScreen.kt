@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.darken.sdmse.appcontrol.R
 import eu.darken.sdmse.appcontrol.core.access.AppOpEntry
 import eu.darken.sdmse.appcontrol.core.access.AppPermissionSnapshot
+import eu.darken.sdmse.appcontrol.core.access.history.AppAccessOperation
 import eu.darken.sdmse.appcontrol.ui.AppAccessRoute
 import eu.darken.sdmse.common.compose.dialog.SdmConfirmDialog
 import eu.darken.sdmse.common.compose.dialog.SdmDialogAction
@@ -42,6 +43,8 @@ import eu.darken.sdmse.common.navigation.NavigationEventHandler
 import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.text.DateFormat
+import java.util.Date
 import eu.darken.sdmse.common.R as CommonR
 
 @Composable
@@ -63,6 +66,9 @@ fun AppAccessScreenHost(
         onAppOpMutationRequested = vm::requestAppOpMutation,
         onAppOpMutationDismissed = vm::dismissAppOpMutation,
         onAppOpValueSelected = vm::selectAppOpValue,
+        onUndoRequested = vm::requestUndo,
+        onUndoDismissed = vm::dismissUndo,
+        onUndoConfirmed = vm::confirmUndo,
     )
 }
 
@@ -77,6 +83,9 @@ internal fun AppAccessScreen(
     onAppOpMutationRequested: (PkgOps.AppOpsKey) -> Unit = {},
     onAppOpMutationDismissed: () -> Unit = {},
     onAppOpValueSelected: (PkgOps.AppOpsValue) -> Unit = {},
+    onUndoRequested: (String) -> Unit = {},
+    onUndoDismissed: () -> Unit = {},
+    onUndoConfirmed: () -> Unit = {},
 ) {
     val state by stateSource.collectAsStateWithLifecycle()
 
@@ -98,7 +107,7 @@ internal fun AppAccessScreen(
                 navigationIcon = {
                     SdmTooltipIconButton(
                         icon = Icons.AutoMirrored.TwoTone.ArrowBack,
-                        label = stringResource(eu.darken.sdmse.common.R.string.general_navigate_up_action),
+                        label = stringResource(CommonR.string.general_navigate_up_action),
                         onClick = onNavigateUp,
                     )
                 },
@@ -108,21 +117,15 @@ internal fun AppAccessScreen(
         when (val current = state) {
             AppAccessViewModel.State.Loading -> ProgressOverlay(
                 data = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
             ) { }
 
             AppAccessViewModel.State.NotFound -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
             )
 
             is AppAccessViewModel.State.Error -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -141,6 +144,10 @@ internal fun AppAccessScreen(
                 appOpsError = current.appOpsError,
                 mutatingAppOpKey = current.mutatingAppOpKey,
                 onAppOpMutationRequested = onAppOpMutationRequested,
+                history = current.history,
+                historyError = current.historyError,
+                undoingOperationId = current.undoingOperationId,
+                onUndoRequested = onUndoRequested,
             )
         }
     }
@@ -161,6 +168,16 @@ internal fun AppAccessScreen(
             onValueSelected = onAppOpValueSelected,
         )
     }
+
+    readyState?.pendingUndoOperationId?.let { operationId ->
+        readyState.history.singleOrNull { it.operation.id == operationId }?.let { item ->
+            UndoDialog(
+                item = item,
+                onDismiss = onUndoDismissed,
+                onConfirm = onUndoConfirmed,
+            )
+        }
+    }
 }
 
 @Composable
@@ -173,6 +190,10 @@ private fun PermissionList(
     appOpsError: Throwable?,
     mutatingAppOpKey: PkgOps.AppOpsKey?,
     onAppOpMutationRequested: (PkgOps.AppOpsKey) -> Unit,
+    history: List<AppAccessViewModel.HistoryItem>,
+    historyError: Throwable?,
+    undoingOperationId: String?,
+    onUndoRequested: (String) -> Unit,
 ) {
     val grantedCount = snapshot.permissions.count { it.granted }
 
@@ -188,9 +209,7 @@ private fun PermissionList(
     ) {
         item("summary") {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
@@ -212,9 +231,7 @@ private fun PermissionList(
         if (snapshot.permissions.isEmpty()) {
             item("empty") {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -256,9 +273,47 @@ private fun PermissionList(
             items(appOps, key = { it.key.raw }) { appOp ->
                 AppOpRow(
                     entry = appOp,
-                    mutationInProgress = mutatingAppOpKey != null,
+                    mutationInProgress = mutatingAppOpKey != null || undoingOperationId != null,
                     isThisAppOpMutating = mutatingAppOpKey == appOp.key,
                     onMutationRequested = onAppOpMutationRequested,
+                )
+                HorizontalDivider()
+            }
+        }
+
+        item("history_header") {
+            Text(
+                text = stringResource(R.string.appcontrol_history_title),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+            )
+        }
+
+        when {
+            historyError != null -> item("history_error") {
+                Text(
+                    text = stringResource(R.string.appcontrol_history_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            }
+
+            history.isEmpty() -> item("history_empty") {
+                Text(
+                    text = stringResource(R.string.appcontrol_history_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+            }
+
+            else -> items(history, key = { it.operation.id }) { item ->
+                HistoryRow(
+                    item = item,
+                    undoing = undoingOperationId == item.operation.id,
+                    anyUndoInProgress = undoingOperationId != null,
+                    onUndoRequested = onUndoRequested,
                 )
                 HorizontalDivider()
             }
@@ -276,19 +331,14 @@ private fun PermissionRow(
     val isThisPermissionMutating = mutatingPermissionId == permission.name
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text = permission.name,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Text(text = permission.name, style = MaterialTheme.typography.bodyMedium)
             Text(
                 text = stringResource(
                     if (permission.granted) {
@@ -337,19 +387,14 @@ private fun AppOpRow(
     onMutationRequested: (PkgOps.AppOpsKey) -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text = entry.key.raw,
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Text(text = entry.key.raw, style = MaterialTheme.typography.bodyMedium)
             Text(
                 text = entry.value.raw,
                 style = MaterialTheme.typography.bodySmall,
@@ -375,6 +420,114 @@ private fun AppOpRow(
 }
 
 @Composable
+private fun HistoryRow(
+    item: AppAccessViewModel.HistoryItem,
+    undoing: Boolean,
+    anyUndoInProgress: Boolean,
+    onUndoRequested: (String) -> Unit,
+) {
+    val operation = item.operation
+    val type = when (operation.kind) {
+        AppAccessOperation.Kind.RUNTIME_PERMISSION ->
+            stringResource(R.string.appcontrol_history_permission)
+        AppAccessOperation.Kind.APP_OP ->
+            stringResource(R.string.appcontrol_history_appop)
+    }
+    val before = historyValue(operation.before)
+    val after = historyValue(operation.after)
+    val timestamp = DateFormat
+        .getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+        .format(Date.from(operation.createdAt))
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = if (operation.revertOf == null) {
+                    type
+                } else {
+                    stringResource(R.string.appcontrol_history_undo_entry, type)
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(text = operation.subjectId, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = "$before → $after",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = if (item.reverted) {
+                    "$timestamp · ${stringResource(R.string.appcontrol_history_reverted)}"
+                } else {
+                    timestamp
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (item.undoAvailable || undoing) {
+            TextButton(
+                enabled = item.undoAvailable && !anyUndoInProgress,
+                onClick = { onUndoRequested(operation.id) },
+            ) {
+                Text(
+                    stringResource(
+                        if (undoing) {
+                            R.string.appcontrol_history_undoing
+                        } else {
+                            R.string.appcontrol_history_undo
+                        },
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun historyValue(value: AppAccessOperation.Value): String = when (value) {
+    is AppAccessOperation.Value.Permission -> stringResource(
+        if (value.granted) R.string.appcontrol_access_granted else R.string.appcontrol_access_denied
+    )
+    is AppAccessOperation.Value.AppOp -> value.value.raw
+}
+
+@Composable
+private fun UndoDialog(
+    item: AppAccessViewModel.HistoryItem,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val operation = item.operation
+    SdmConfirmDialog(
+        title = stringResource(R.string.appcontrol_history_undo_title),
+        message = stringResource(
+            R.string.appcontrol_history_undo_message,
+            operation.subjectId,
+            historyValue(operation.before),
+        ),
+        onDismissRequest = onDismiss,
+        positive = SdmDialogAction(
+            label = stringResource(R.string.appcontrol_history_undo),
+            onClick = onConfirm,
+        ),
+        negative = SdmDialogAction(
+            label = stringResource(CommonR.string.general_cancel_action),
+            initialFocus = true,
+            onClick = onDismiss,
+        ),
+    )
+}
+
+@Composable
 private fun AppOpModeDialog(
     mutation: AppAccessViewModel.AppOpMutation,
     onDismiss: () -> Unit,
@@ -382,9 +535,7 @@ private fun AppOpModeDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(stringResource(R.string.appcontrol_appops_choose_mode))
-        },
+        title = { Text(stringResource(R.string.appcontrol_appops_choose_mode)) },
         text = {
             Column {
                 Text(
