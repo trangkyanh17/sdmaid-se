@@ -38,6 +38,13 @@
     <string name="appcontrol_app_exclude_edit_title">Edit exclusion</string>
     <string name="appcontrol_app_exclude_edit_description">This app is currently excluded from one or more tools.</string>
     <string name="appcontrol_tag_user">User</string>
+    <string name="appcontrol_tag_work_profile">Work profile</string>
+    <string name="appcontrol_tag_private_profile">Private space</string>
+    <string name="appcontrol_tag_other_profile">Other profile</string>
+    <string name="appcontrol_profile_filter_title">User/profile</string>
+    <string name="appcontrol_profile_filter_all">All users/profiles</string>
+    <string name="appcontrol_profile_filter_current">Current user</string>
+    <string name="appcontrol_profile_filter_other_users">Other users/profiles</string>
     <string name="appcontrol_tag_active">Recently active</string>
     <string name="appcontrol_tag_apk_base">APK</string>
     <string name="appcontrol_tag_apk_bundle">Bundle</string>

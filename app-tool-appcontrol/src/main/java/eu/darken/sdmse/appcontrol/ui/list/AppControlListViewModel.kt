@@ -13,6 +13,7 @@ import eu.darken.sdmse.appcontrol.core.AppControlSettings
 import eu.darken.sdmse.appcontrol.core.AppControlTask
 import eu.darken.sdmse.appcontrol.core.AppInfo
 import eu.darken.sdmse.appcontrol.core.FilterSettings
+import eu.darken.sdmse.appcontrol.core.ProfileFilterSettings
 import eu.darken.sdmse.appcontrol.core.SortSettings
 import eu.darken.sdmse.appcontrol.core.archive.ArchiveTask
 import eu.darken.sdmse.appcontrol.core.export.AppExportTask
@@ -131,8 +132,14 @@ class AppControlListViewModel @Inject constructor(
         searchQuery,
         settings.listSort.flow,
         settings.listFilter.flow,
-    ) { query, sort, filter ->
-        DisplayOptions(searchQuery = query, listSort = sort, listFilter = filter)
+        settings.listProfileFilter.flow,
+    ) { query, sort, filter, profileFilter ->
+        DisplayOptions(
+            searchQuery = query,
+            listSort = sort,
+            listFilter = filter,
+            profileFilter = profileFilter,
+        )
     }
 
     // Row production excludes progress so high-frequency progress ticks during a scan don't re-run
@@ -155,8 +162,11 @@ class AppControlListViewModel @Inject constructor(
         val orderingOptions = if (sortDataMissing) options.copy(listSort = SortSettings()) else options
 
         val allowFilterActive = acState.canInfoActive && settings.moduleActivityEnabled.value()
+        val allowProfileFilter = acState.data?.hasIncludedMultiUser == true
 
-        val rows = acState.data?.apps?.let { apps -> filterSortRows(apps, orderingOptions) }
+        val rows = acState.data?.apps?.let { apps ->
+            filterSortRows(apps, orderingOptions, applyProfileFilter = allowProfileFilter)
+        }
 
         State(
             rows = rows,
@@ -166,6 +176,7 @@ class AppControlListViewModel @Inject constructor(
             allowActionArchive = acState.canArchive,
             allowActionRestore = acState.canRestore,
             allowFilterActive = allowFilterActive,
+            allowProfileFilter = allowProfileFilter,
             sizeSortModuleEnabled = settings.moduleSizingEnabled.value(),
         )
     }
@@ -181,10 +192,19 @@ class AppControlListViewModel @Inject constructor(
     }
         .safeStateIn(initialValue = State(), onError = { State() })
 
-    private fun filterSortRows(apps: Collection<AppInfo>, options: DisplayOptions): List<Row> {
+    private fun filterSortRows(
+        apps: Collection<AppInfo>,
+        options: DisplayOptions,
+        applyProfileFilter: Boolean,
+    ): List<Row> {
         val query = options.searchQuery.lowercase()
         val tags = options.listFilter.tags
         val sort = options.listSort
+        val profileScope = if (applyProfileFilter) {
+            options.profileFilter.scope
+        } else {
+            ProfileFilterSettings.Scope.ALL
+        }
 
         val rows = apps
             .asSequence()
@@ -192,6 +212,7 @@ class AppControlListViewModel @Inject constructor(
                 if (query.isEmpty()) return@filter true
                 normalizedPackageName(app).contains(query) || normalizedLabel(app).contains(query)
             }
+            .filter { app -> matchesProfileScope(app, profileScope) }
             .filter { app ->
                 if (tags.contains(FilterSettings.Tag.USER) && app.pkg.isSystemApp) return@filter false
                 if (tags.contains(FilterSettings.Tag.SYSTEM) && !app.pkg.isSystemApp) return@filter false
@@ -223,10 +244,25 @@ class AppControlListViewModel @Inject constructor(
             }
 
         log(TAG, INFO) {
-            "Filtered ${apps.size} → ${rows.size} apps (tags=$tags, sort=${sort.mode}, query='$query')"
+            "Filtered ${apps.size} → ${rows.size} apps " +
+                    "(tags=$tags, profile=$profileScope, sort=${sort.mode}, query='$query')"
         }
 
         return rows
+    }
+
+    private fun matchesProfileScope(
+        app: AppInfo,
+        scope: ProfileFilterSettings.Scope,
+    ): Boolean = when (scope) {
+        ProfileFilterSettings.Scope.ALL -> true
+        ProfileFilterSettings.Scope.CURRENT_USER -> app.userProfile?.isCurrent == true
+        ProfileFilterSettings.Scope.OTHER_USERS -> app.userProfile?.isCurrent == false
+        ProfileFilterSettings.Scope.WORK_PROFILE ->
+            app.userProfile?.type == eu.darken.sdmse.common.user.UserProfile2.Type.WORK_PROFILE
+
+        ProfileFilterSettings.Scope.PRIVATE_PROFILE ->
+            app.userProfile?.type == eu.darken.sdmse.common.user.UserProfile2.Type.PRIVATE_PROFILE
     }
 
     private fun sectionKeyOf(value: String): String {
@@ -338,6 +374,11 @@ class AppControlListViewModel @Inject constructor(
             }
             old.copy(tags = newTags)
         }
+    }
+
+    fun onProfileScopeChanged(scope: ProfileFilterSettings.Scope) = launch {
+        log(TAG) { "onProfileScopeChanged($scope)" }
+        settings.listProfileFilter.update { old -> old.copy(scope = scope) }
     }
 
     fun onTagsReset() = launch {
@@ -537,6 +578,7 @@ class AppControlListViewModel @Inject constructor(
         val searchQuery: String = "",
         val listSort: SortSettings = SortSettings(),
         val listFilter: FilterSettings = FilterSettings(),
+        val profileFilter: ProfileFilterSettings = ProfileFilterSettings(),
     )
 
     data class State(
@@ -549,6 +591,7 @@ class AppControlListViewModel @Inject constructor(
         val allowActionRestore: Boolean = false,
         val sizeSortModuleEnabled: Boolean = false,
         val allowFilterActive: Boolean = false,
+        val allowProfileFilter: Boolean = false,
         val cancelRequested: Boolean = false,
     )
 

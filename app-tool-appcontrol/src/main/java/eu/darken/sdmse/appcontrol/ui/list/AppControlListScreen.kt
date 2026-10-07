@@ -70,6 +70,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import eu.darken.sdmse.appcontrol.R
 import eu.darken.sdmse.appcontrol.core.FilterSettings
+import eu.darken.sdmse.appcontrol.core.ProfileFilterSettings
 import eu.darken.sdmse.appcontrol.core.SortSettings
 import eu.darken.sdmse.appcontrol.ui.list.items.AppControlListRow
 import eu.darken.sdmse.appcontrol.ui.list.tour.AppControlListTour
@@ -171,6 +172,7 @@ fun AppControlListScreenHost(
         onSortDirectionToggle = vm::onSortDirectionToggle,
         onTagToggle = vm::onTagToggle,
         onTagsReset = vm::onTagsReset,
+        onProfileScopeChanged = vm::onProfileScopeChanged,
         onSizeSortCaveatAck = {
             sizeSortCaveatVisible = false
             vm.onAckSizeSortCaveat()
@@ -316,6 +318,7 @@ internal fun AppControlListScreen(
     onSortDirectionToggle: () -> Unit = {},
     onTagToggle: (FilterSettings.Tag) -> Unit = {},
     onTagsReset: () -> Unit = {},
+    onProfileScopeChanged: (ProfileFilterSettings.Scope) -> Unit = {},
     onSizeSortCaveatAck: () -> Unit = {},
     onExcludeSelected: (Set<InstallId>) -> Unit = {},
     onToggleSelected: (Set<InstallId>) -> Unit = {},
@@ -536,6 +539,11 @@ internal fun AppControlListScreen(
                                     onTagRemove = onTagToggle,
                                     onAddTags = { openSheet(Sheet.Tags) },
                                     onSort = { openSheet(Sheet.Sort) },
+                                    profileScope = state.options.profileFilter.scope,
+                                    allowProfileFilter = state.allowProfileFilter,
+                                    onProfileScopeReset = {
+                                        onProfileScopeChanged(ProfileFilterSettings.Scope.ALL)
+                                    },
                                     addTagsModifier = Modifier.guidedTourTarget(AppControlListTour.FILTER_TARGET),
                                     sortModifier = Modifier.guidedTourTarget(AppControlListTour.SORT_TARGET),
                                 )
@@ -780,6 +788,9 @@ internal fun AppControlListScreen(
                 allowFilterActive = state.allowFilterActive,
                 onTagToggle = onTagToggle,
                 onTagsReset = onTagsReset,
+                profileScope = state.options.profileFilter.scope,
+                allowProfileFilter = state.allowProfileFilter,
+                onProfileScopeChanged = onProfileScopeChanged,
             )
         }
 

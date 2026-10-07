@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import eu.darken.sdmse.appcontrol.R
 import eu.darken.sdmse.appcontrol.core.FilterSettings
+import eu.darken.sdmse.appcontrol.core.ProfileFilterSettings
 import eu.darken.sdmse.appcontrol.core.SortSettings
 import eu.darken.sdmse.common.R as CommonR
 import eu.darken.sdmse.common.compose.preview.Preview2
@@ -55,6 +56,9 @@ internal fun AppControlFilterRow(
     onTagRemove: (FilterSettings.Tag) -> Unit,
     onAddTags: () -> Unit,
     onSort: () -> Unit,
+    profileScope: ProfileFilterSettings.Scope = ProfileFilterSettings.Scope.ALL,
+    allowProfileFilter: Boolean = false,
+    onProfileScopeReset: () -> Unit = {},
     modifier: Modifier = Modifier,
     addTagsModifier: Modifier = Modifier,
     sortModifier: Modifier = Modifier,
@@ -62,6 +66,7 @@ internal fun AppControlFilterRow(
     val ordered = remember(activeTags, allowFilterActive) {
         FilterSettings.Tag.entries.filter { it in activeTags && (it != FilterSettings.Tag.ACTIVE || allowFilterActive) }
     }
+    val profileScopeVisible = allowProfileFilter && profileScope != ProfileFilterSettings.Scope.ALL
     // Full-width tonal band so the filter/sort controls read as a distinct toolbar rather than
     // floating on the app bar's surface color. surfaceContainerHigh sits a tonal step above the
     // app bar and the list (both surface). The offset for collapse-on-scroll is applied to this
@@ -78,7 +83,7 @@ internal fun AppControlFilterRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            if (ordered.isEmpty()) {
+            if (ordered.isEmpty() && !profileScopeVisible) {
                 Text(
                     text = stringResource(CommonR.string.general_filter_empty_row_hint),
                     style = MaterialTheme.typography.bodyMedium,
@@ -94,7 +99,17 @@ internal fun AppControlFilterRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    items(ordered, key = { it.name }) { tag -> ActiveTagChip(tag = tag, onRemove = { onTagRemove(tag) }) }
+                    items(ordered, key = { it.name }) { tag ->
+                        ActiveTagChip(tag = tag, onRemove = { onTagRemove(tag) })
+                    }
+                    if (profileScopeVisible) {
+                        item(key = "profile-scope-${profileScope.name}") {
+                            ActiveProfileScopeChip(
+                                scope = profileScope,
+                                onRemove = onProfileScopeReset,
+                            )
+                        }
+                    }
                 }
             }
             IconButton(
@@ -131,6 +146,27 @@ private fun ActiveTagChip(
     onRemove: () -> Unit,
 ) {
     val label = tagLabel(tag)
+    val removeDesc = stringResource(CommonR.string.general_filter_remove_x_action, label)
+    InputChip(
+        selected = true,
+        onClick = onRemove,
+        label = { Text(label) },
+        trailingIcon = {
+            Icon(
+                imageVector = Icons.TwoTone.Close,
+                contentDescription = removeDesc,
+                modifier = Modifier.size(InputChipDefaults.IconSize),
+            )
+        },
+    )
+}
+
+@Composable
+private fun ActiveProfileScopeChip(
+    scope: ProfileFilterSettings.Scope,
+    onRemove: () -> Unit,
+) {
+    val label = profileScopeLabel(scope)
     val removeDesc = stringResource(CommonR.string.general_filter_remove_x_action, label)
     InputChip(
         selected = true,
@@ -213,6 +249,9 @@ internal fun AppControlTagsSheetContent(
     allowFilterActive: Boolean,
     onTagToggle: (FilterSettings.Tag) -> Unit,
     onTagsReset: () -> Unit,
+    profileScope: ProfileFilterSettings.Scope = ProfileFilterSettings.Scope.ALL,
+    allowProfileFilter: Boolean = false,
+    onProfileScopeChanged: (ProfileFilterSettings.Scope) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val defaultTags = remember { FilterSettings().tags }
@@ -283,6 +322,29 @@ internal fun AppControlTagsSheetContent(
                 selected = FilterSettings.Tag.HIDDEN in tags,
                 onClick = { onTagToggle(FilterSettings.Tag.HIDDEN) },
             )
+        }
+
+        if (allowProfileFilter) {
+            Text(
+                text = stringResource(R.string.appcontrol_profile_filter_title),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 8.dp),
+            )
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ProfileFilterSettings.Scope.entries.forEach { scope ->
+                    TagChip(
+                        label = profileScopeLabel(scope),
+                        selected = profileScope == scope,
+                        onClick = { onProfileScopeChanged(scope) },
+                    )
+                }
+            }
         }
     }
 }
@@ -372,6 +434,15 @@ internal fun tagLabel(tag: FilterSettings.Tag): String = when (tag) {
     FilterSettings.Tag.ACTIVE -> stringResource(R.string.appcontrol_tag_active)
     FilterSettings.Tag.NOT_INSTALLED -> stringResource(R.string.appcontrol_tag_not_installed)
     FilterSettings.Tag.HIDDEN -> stringResource(R.string.appcontrol_tag_hidden)
+}
+
+@Composable
+internal fun profileScopeLabel(scope: ProfileFilterSettings.Scope): String = when (scope) {
+    ProfileFilterSettings.Scope.ALL -> stringResource(R.string.appcontrol_profile_filter_all)
+    ProfileFilterSettings.Scope.CURRENT_USER -> stringResource(R.string.appcontrol_profile_filter_current)
+    ProfileFilterSettings.Scope.OTHER_USERS -> stringResource(R.string.appcontrol_profile_filter_other_users)
+    ProfileFilterSettings.Scope.WORK_PROFILE -> stringResource(R.string.appcontrol_tag_work_profile)
+    ProfileFilterSettings.Scope.PRIVATE_PROFILE -> stringResource(R.string.appcontrol_tag_private_profile)
 }
 
 @Composable

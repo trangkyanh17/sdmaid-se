@@ -9,6 +9,7 @@ import eu.darken.sdmse.appcontrol.core.AppControlScanTask
 import eu.darken.sdmse.appcontrol.core.AppControlSettings
 import eu.darken.sdmse.appcontrol.core.AppInfo
 import eu.darken.sdmse.appcontrol.core.FilterSettings
+import eu.darken.sdmse.appcontrol.core.ProfileFilterSettings
 import eu.darken.sdmse.appcontrol.core.SortSettings
 import eu.darken.sdmse.appcontrol.core.archive.ArchiveTask
 import eu.darken.sdmse.appcontrol.core.forcestop.ForceStopTask
@@ -31,6 +32,7 @@ import eu.darken.sdmse.common.pkgs.pkgops.PkgOps
 import eu.darken.sdmse.common.progress.Progress
 import eu.darken.sdmse.common.upgrade.UpgradeRepo
 import eu.darken.sdmse.common.user.UserHandle2
+import eu.darken.sdmse.common.user.UserProfile2
 import eu.darken.sdmse.exclusion.core.ExclusionManager
 import eu.darken.sdmse.exclusion.core.types.Exclusion
 import eu.darken.sdmse.main.core.taskmanager.TaskSubmitter
@@ -75,6 +77,7 @@ class AppControlListViewModelTest : BaseTest() {
         usage: UsageInfo? = null,
         updatedAt: Instant? = null,
         installedAt: Instant? = null,
+        userProfile: UserProfile2? = null,
     ): AppInfo {
         val pkgId = Pkg.Id(pkgName)
         val installId = InstallId(pkgId, userHandle)
@@ -101,7 +104,7 @@ class AppControlListViewModelTest : BaseTest() {
             isActive = isActive,
             sizes = sizes,
             usage = usage,
-            userProfile = null,
+            userProfile = userProfile,
             canBeToggled = false,
             canBeStopped = false,
             canBeExported = false,
@@ -214,6 +217,7 @@ class AppControlListViewModelTest : BaseTest() {
         val listSort: DataStoreValue<SortSettings>,
         val listSortBacking: MutableStateFlow<SortSettings>,
         val listFilter: DataStoreValue<FilterSettings>,
+        val listProfileFilter: DataStoreValue<ProfileFilterSettings>,
         val ackSizeSortCaveat: DataStoreValue<Boolean>,
         val moduleSizingEnabled: DataStoreValue<Boolean>,
         val moduleActivityEnabled: DataStoreValue<Boolean>,
@@ -262,6 +266,7 @@ class AppControlListViewModelTest : BaseTest() {
         progress: Progress.Data? = null,
         sort: SortSettings = SortSettings(),
         filter: FilterSettings = FilterSettings(),
+        profileFilter: ProfileFilterSettings = ProfileFilterSettings(),
         sizingEnabled: Boolean = true,
         activityEnabled: Boolean = true,
         multiUserEnabled: Boolean = false,
@@ -298,6 +303,7 @@ class AppControlListViewModelTest : BaseTest() {
         val taskSubmitter = mockk<TaskSubmitter>(relaxed = true)
         val (listSort, listSortBacking) = mutableDataStoreValue(sort)
         val listFilter = rwDataStoreValue(filter)
+        val listProfileFilter = rwDataStoreValue(profileFilter)
         val ackSizeSortCaveatStore = rwDataStoreValue(ackSizeSortCaveatValue)
         val moduleSizingEnabledStore = rwDataStoreValue(sizingEnabled)
         val moduleActivityEnabledStore = rwDataStoreValue(activityEnabled)
@@ -305,6 +311,7 @@ class AppControlListViewModelTest : BaseTest() {
         val settings = mockk<AppControlSettings>().apply {
             every { this@apply.listSort } returns listSort
             every { this@apply.listFilter } returns listFilter
+            every { this@apply.listProfileFilter } returns listProfileFilter
             every { ackSizeSortCaveat } returns ackSizeSortCaveatStore
             every { moduleSizingEnabled } returns moduleSizingEnabledStore
             every { moduleActivityEnabled } returns moduleActivityEnabledStore
@@ -342,6 +349,7 @@ class AppControlListViewModelTest : BaseTest() {
             listSort = listSort,
             listSortBacking = listSortBacking,
             listFilter = listFilter,
+            listProfileFilter = listProfileFilter,
             ackSizeSortCaveat = ackSizeSortCaveatStore,
             moduleSizingEnabled = moduleSizingEnabledStore,
             moduleActivityEnabled = moduleActivityEnabledStore,
@@ -351,13 +359,17 @@ class AppControlListViewModelTest : BaseTest() {
         )
     }
 
-    private fun dataOf(vararg apps: AppInfo, hasInfoSize: Boolean = false): AppControl.Data =
+    private fun dataOf(
+        vararg apps: AppInfo,
+        hasInfoSize: Boolean = false,
+        hasIncludedMultiUser: Boolean = false,
+    ): AppControl.Data =
         AppControl.Data(
             apps = apps.toList(),
             hasInfoScreenTime = false,
             hasInfoActive = false,
             hasInfoSize = hasInfoSize,
-            hasIncludedMultiUser = false,
+            hasIncludedMultiUser = hasIncludedMultiUser,
         )
 
     // ─────────────────────────── init / scan ───────────────────────────
@@ -503,6 +515,106 @@ class AppControlListViewModelTest : BaseTest() {
 
         val rows = h.vm.state.first().rows!!
         rows.map { it.appInfo.pkg.packageName } shouldBe listOf("com.userenabled.app")
+    }
+
+    @Test
+    fun `profile filter CURRENT_USER keeps only current-user apps`() = runTest2 {
+        val currentProfile = UserProfile2(
+            handle = UserHandle2(0),
+            type = UserProfile2.Type.FULL_USER,
+            isCurrent = true,
+        )
+        val workProfile = UserProfile2(
+            handle = UserHandle2(10),
+            type = UserProfile2.Type.WORK_PROFILE,
+        )
+        val current = appInfo("com.current.app", userHandle = currentProfile.handle, userProfile = currentProfile)
+        val work = appInfo("com.work.app", userHandle = workProfile.handle, userProfile = workProfile)
+        val h = harness(
+            data = dataOf(current, work, hasIncludedMultiUser = true),
+            filter = FilterSettings(tags = emptySet()),
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.CURRENT_USER),
+        )
+
+        h.vm.state.first().rows!!.map { it.appInfo.pkg.packageName } shouldBe listOf("com.current.app")
+    }
+
+    @Test
+    fun `profile filter OTHER_USERS keeps any non-current profile or user`() = runTest2 {
+        val currentProfile = UserProfile2(handle = UserHandle2(0), isCurrent = true)
+        val workProfile = UserProfile2(handle = UserHandle2(10), type = UserProfile2.Type.WORK_PROFILE)
+        val secondaryUser = UserProfile2(handle = UserHandle2(11), type = UserProfile2.Type.FULL_USER)
+        val current = appInfo("com.current.app", userHandle = currentProfile.handle, userProfile = currentProfile)
+        val work = appInfo("com.work.app", userHandle = workProfile.handle, userProfile = workProfile)
+        val secondary = appInfo("com.secondary.app", userHandle = secondaryUser.handle, userProfile = secondaryUser)
+        val h = harness(
+            data = dataOf(current, work, secondary, hasIncludedMultiUser = true),
+            filter = FilterSettings(tags = emptySet()),
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.OTHER_USERS),
+            sort = SortSettings(mode = SortSettings.Mode.PACKAGENAME, reversed = false),
+        )
+
+        h.vm.state.first().rows!!.map { it.appInfo.pkg.packageName } shouldBe
+                listOf("com.secondary.app", "com.work.app")
+    }
+
+    @Test
+    fun `profile filter WORK_PROFILE matches typed work profiles only`() = runTest2 {
+        val workProfile = UserProfile2(handle = UserHandle2(10), type = UserProfile2.Type.WORK_PROFILE)
+        val privateProfile = UserProfile2(handle = UserHandle2(11), type = UserProfile2.Type.PRIVATE_PROFILE)
+        val work = appInfo("com.work.app", userHandle = workProfile.handle, userProfile = workProfile)
+        val privateApp = appInfo("com.private.app", userHandle = privateProfile.handle, userProfile = privateProfile)
+        val h = harness(
+            data = dataOf(work, privateApp, hasIncludedMultiUser = true),
+            filter = FilterSettings(tags = emptySet()),
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.WORK_PROFILE),
+        )
+
+        h.vm.state.first().rows!!.map { it.appInfo.pkg.packageName } shouldBe listOf("com.work.app")
+    }
+
+    @Test
+    fun `profile filter PRIVATE_PROFILE matches typed private profiles only`() = runTest2 {
+        val workProfile = UserProfile2(handle = UserHandle2(10), type = UserProfile2.Type.WORK_PROFILE)
+        val privateProfile = UserProfile2(handle = UserHandle2(11), type = UserProfile2.Type.PRIVATE_PROFILE)
+        val work = appInfo("com.work.app", userHandle = workProfile.handle, userProfile = workProfile)
+        val privateApp = appInfo("com.private.app", userHandle = privateProfile.handle, userProfile = privateProfile)
+        val h = harness(
+            data = dataOf(work, privateApp, hasIncludedMultiUser = true),
+            filter = FilterSettings(tags = emptySet()),
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.PRIVATE_PROFILE),
+        )
+
+        h.vm.state.first().rows!!.map { it.appInfo.pkg.packageName } shouldBe listOf("com.private.app")
+    }
+
+    @Test
+    fun `profile filter fails closed when metadata is missing`() = runTest2 {
+        val known = UserProfile2(handle = UserHandle2(10), type = UserProfile2.Type.WORK_PROFILE)
+        val knownApp = appInfo("com.known.app", userHandle = known.handle, userProfile = known)
+        val unknownApp = appInfo("com.unknown.app", userHandle = UserHandle2(11), userProfile = null)
+        val h = harness(
+            data = dataOf(knownApp, unknownApp, hasIncludedMultiUser = true),
+            filter = FilterSettings(tags = emptySet()),
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.OTHER_USERS),
+            sort = SortSettings(mode = SortSettings.Mode.PACKAGENAME, reversed = false),
+        )
+
+        h.vm.state.first().rows!!.map { it.appInfo.pkg.packageName } shouldBe listOf("com.known.app")
+    }
+
+    @Test
+    fun `profile filter is ignored when snapshot did not include multi-user data`() = runTest2 {
+        val app = appInfo("com.current.app")
+        val h = harness(
+            data = dataOf(app, hasIncludedMultiUser = false),
+            filter = FilterSettings(tags = emptySet()),
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.WORK_PROFILE),
+        )
+
+        val state = h.vm.state.first()
+        state.allowProfileFilter shouldBe false
+        state.rows!!.map { it.appInfo.pkg.packageName } shouldBe listOf("com.current.app")
     }
 
     // ─────────────────────────── search ───────────────────────────
@@ -902,6 +1014,21 @@ class AppControlListViewModelTest : BaseTest() {
         coVerify(exactly = 1) { h.listSort.update(capture(captured)) }
         // Apply transformer to the starting value and check the flip.
         captured.captured(SortSettings(reversed = false))?.reversed shouldBe true
+    }
+
+    @Test
+    fun `onProfileScopeChanged writes dedicated profile filter setting`() = runTest2 {
+        val h = harness(
+            profileFilter = ProfileFilterSettings(ProfileFilterSettings.Scope.ALL),
+        )
+
+        h.vm.onProfileScopeChanged(ProfileFilterSettings.Scope.WORK_PROFILE)
+        advanceUntilIdle()
+
+        val captured = slot<(ProfileFilterSettings) -> ProfileFilterSettings?>()
+        coVerify(exactly = 1) { h.listProfileFilter.update(capture(captured)) }
+        captured.captured(ProfileFilterSettings()) shouldBe
+                ProfileFilterSettings(ProfileFilterSettings.Scope.WORK_PROFILE)
     }
 
     @Test

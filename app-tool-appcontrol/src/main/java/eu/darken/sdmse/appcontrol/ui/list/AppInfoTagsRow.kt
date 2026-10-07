@@ -29,6 +29,7 @@ import eu.darken.sdmse.common.pkgs.isLibrary
 import eu.darken.sdmse.common.pkgs.isNotInstalledForUser
 import eu.darken.sdmse.common.pkgs.isSystemApp
 import eu.darken.sdmse.common.pkgs.isUninstalled
+import eu.darken.sdmse.common.user.UserProfile2
 
 @Composable
 fun AppInfoTagsRow(
@@ -47,10 +48,14 @@ fun AppInfoTagsRow(
     val disabled = !appInfo.pkg.isEnabled
     val apkBase = appInfo.exportType == AppExportType.APK
     val apkBundle = appInfo.exportType == AppExportType.BUNDLE
+    val profileType = appInfo.userProfile?.type
+    val profileTypeVisible = profileType == UserProfile2.Type.WORK_PROFILE ||
+            profileType == UserProfile2.Type.PRIVATE_PROFILE ||
+            profileType == UserProfile2.Type.OTHER_PROFILE
 
     val anyVisible =
         active || library || system || debug || archived || uninstalled || hidden || notInstalled ||
-                disabled || apkBase || apkBundle
+                disabled || apkBase || apkBundle || profileTypeVisible
     if (!anyVisible) return
 
     FlowRow(
@@ -113,6 +118,27 @@ fun AppInfoTagsRow(
                 background = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             )
+        }
+        when (profileType) {
+            UserProfile2.Type.WORK_PROFILE -> Tag(
+                text = stringResource(R.string.appcontrol_tag_work_profile),
+                background = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+
+            UserProfile2.Type.PRIVATE_PROFILE -> Tag(
+                text = stringResource(R.string.appcontrol_tag_private_profile),
+                background = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+
+            UserProfile2.Type.OTHER_PROFILE -> Tag(
+                text = stringResource(R.string.appcontrol_tag_other_profile),
+                background = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+
+            else -> Unit
         }
         if (debug) {
             Tag(

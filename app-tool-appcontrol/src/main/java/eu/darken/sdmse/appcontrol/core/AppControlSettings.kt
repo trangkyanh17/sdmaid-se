@@ -24,6 +24,7 @@ class AppControlSettings @Inject constructor(
 
     val listSort = dataStore.createValue("list.sort.settings", SortSettings(), json)
     val listFilter = dataStore.createValue("list.filter.settings", FilterSettings(), json)
+    val listProfileFilter = dataStore.createValue("list.profile.filter.settings", ProfileFilterSettings(), json)
     val ackSizeSortCaveat = dataStore.createValue("list.filter.sizesort.caveat.ack", false)
     val moduleSizingEnabled = dataStore.createValue("module.sizing.enabled", true)
     val moduleActivityEnabled = dataStore.createValue("module.activity.enabled", true)
